@@ -5,13 +5,69 @@ class Wavy
 {
     static void Main()
     {
-        TcpClient client = new TcpClient("127.0.0.1", 5000);
-        NetworkStream stream = client.GetStream();
-        byte[] message = Encoding.UTF8.GetBytes("WAVY ID 001");
-        stream.Write(message, 0, message.Length);
+        string wavyId = "001";
+        string aggregatorIp = "127.0.0.1";
+        int aggregatorPort = 4000;
 
+        try
+        {
+            TcpClient client = new TcpClient(aggregatorIp, aggregatorPort);
+            NetworkStream stream = client.GetStream();
+
+            // Enviar identificação inicial
+            string helloMessage = $"HELLO, I AM WAVY{wavyId}";
+            SendMessage(stream, helloMessage);
+
+            // Receber resposta do agregador
+            string response = ReceiveMessage(stream);
+            Console.WriteLine("AGREGADOR: " + response);
+
+            if (response.StartsWith("ACK"))
+            {
+                // Enviar requisição de estado
+                string statusRequest = $"STATUS_REQUEST:WAVY{wavyId}";
+                SendMessage(stream, statusRequest);
+
+                // Receber estado atual
+                response = ReceiveMessage(stream);
+                Console.WriteLine("AGREGADOR: " + response);
+
+                // Enviar dados em CSV
+                string csvData = "timestamp,temperature,salinity\n2025-03-13 12:00,22.5,35.1";
+                string dataMessage = $"DATA_CSV:WAVY{wavyId}:{csvData}";
+                SendMessage(stream, dataMessage);
+
+                // Receber confirmação de envio de dados
+                response = ReceiveMessage(stream);
+                Console.WriteLine("AGREGADOR: " + response);
+            }
+            else
+            {
+                Console.WriteLine("Erro: WAVY não reconhecida pelo AGREGADOR.");
+            }
+
+            // Finalizar comunicação
+            SendMessage(stream, "QUIT");
+            stream.Close();
+            client.Close();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("Erro: " + e.Message);
+        }
+    }
+
+    static void SendMessage(NetworkStream stream, string message)
+    {
+        byte[] data = Encoding.UTF8.GetBytes(message);
+        stream.Write(data, 0, data.Length);
+    }
+
+    static string ReceiveMessage(NetworkStream stream)
+    {
         byte[] buffer = new byte[1024];
         int bytesRead = stream.Read(buffer, 0, buffer.Length);
-        Console.WriteLine("Servidor respondeu: " + Encoding.UTF8.GetString(buffer, 0, bytesRead));
+        return Encoding.UTF8.GetString(buffer, 0, bytesRead);
     }
 }
+
