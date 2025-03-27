@@ -40,9 +40,12 @@ class TCPServer
 
     static void Main()
     {
-        TcpListener server = new TcpListener(IPAddress.Any, 5000);
+        string localIP = GetLocalIPAddress();
+        int port = 5000;
+
+        TcpListener server = new TcpListener(IPAddress.Any, port);
         server.Start();
-        Console.WriteLine("Servidor TCP iniciado na porta 5000...");
+        Console.WriteLine($"Servidor TCP iniciado em {localIP}:{port}...");
 
         while (true)
         {
@@ -51,4 +54,19 @@ class TCPServer
             clientThread.Start(client);
         }
     }
+
+    static string GetLocalIPAddress()
+    {
+        string localIP = "127.0.0.1"; // Valor padrão
+        foreach (var ip in Dns.GetHostEntry(Dns.GetHostName()).AddressList)
+        {
+            if (ip.AddressFamily == AddressFamily.InterNetwork)
+            {
+                localIP = ip.ToString();
+                break;
+            }
+        }
+        return localIP;
+    }
 }
+
