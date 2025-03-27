@@ -3,11 +3,17 @@ using System.Text;
 
 class Wavy
 {
-    static void Main()
+    static void Main(string[] args)
     {
+        if (args.Length != 2)
+        {
+            return;
+        }
+
         string wavyId = "001";
-        string aggregatorIp = "127.0.0.1";
-        int aggregatorPort = 4000;
+        string aggregatorIp = args[1];
+        int aggregatorPort = Convert.ToInt32(args[2]);
+        string state; 
 
         try
         {
@@ -15,7 +21,7 @@ class Wavy
             NetworkStream stream = client.GetStream();
 
             // Enviar identificação inicial
-            string helloMessage = $"HELLO, I AM WAVY{wavyId}";
+            string helloMessage = $"HELLO:WAVY{wavyId}";
             SendMessage(stream, helloMessage);
 
             // Receber resposta do agregador
@@ -30,6 +36,7 @@ class Wavy
 
                 // Receber estado atual
                 response = ReceiveMessage(stream);
+                state = response.Split(':')[2];
                 Console.WriteLine("AGREGADOR: " + response);
 
                 // Enviar dados em CSV
@@ -43,13 +50,22 @@ class Wavy
             }
             else
             {
-                Console.WriteLine("Erro: WAVY não reconhecida pelo AGREGADOR.");
+                Console.WriteLine(response);
             }
 
             // Finalizar comunicação
             SendMessage(stream, "QUIT");
-            stream.Close();
-            client.Close();
+            response = ReceiveMessage(stream);
+            if (response.StartsWith("100 OK"))
+            {
+                Console.WriteLine("AGREGADOR: " + response);
+                stream.Close();
+                client.Close();
+            }
+            else
+            {
+                Console.WriteLine("Erro: Desconexão forçada.");
+            }
         }
         catch (Exception e)
         {
