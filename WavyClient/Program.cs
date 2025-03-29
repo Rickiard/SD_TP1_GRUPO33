@@ -11,8 +11,8 @@ class Wavy
         }
 
         string wavyId = "001";
-        string aggregatorIp = args[1];
-        int aggregatorPort = Convert.ToInt32(args[2]);
+        string aggregatorIp = args[0];
+        int aggregatorPort = Convert.ToInt32(args[1]);
         string state; 
 
         try
