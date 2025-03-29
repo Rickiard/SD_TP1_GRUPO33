@@ -1,18 +1,21 @@
-﻿using System.Net.Sockets;
+﻿using System.Net;
+using System.Net.Sockets;
 using System.Text;
 
 class Wavy
 {
     static void Main(string[] args)
     {
-        if (args.Length != 2)
-        {
-            return;
-        }
+        //if (args.Length != 2)
+        //{
+        //    return;
+        //}
 
         string wavyId = "001";
-        string aggregatorIp = args[0];
-        int aggregatorPort = Convert.ToInt32(args[1]);
+        //string aggregatorIp = args[0];
+        //int aggregatorPort = Convert.ToInt32(args[1]);
+        string aggregatorIp = GetLocalIPAddress();
+        int aggregatorPort = 5000;
         string state; 
 
         try
@@ -84,6 +87,28 @@ class Wavy
         byte[] buffer = new byte[1024];
         int bytesRead = stream.Read(buffer, 0, buffer.Length);
         return Encoding.UTF8.GetString(buffer, 0, bytesRead);
+    }
+
+    static string GetLocalIPAddress()
+    {
+        string localIP = string.Empty;
+        var host = Dns.GetHostEntry(Dns.GetHostName());
+
+        foreach (var ip in host.AddressList)
+        {
+            if (ip.AddressFamily == AddressFamily.InterNetwork)
+            {
+                localIP = ip.ToString();
+                break;
+            }
+        }
+
+        if (string.IsNullOrEmpty(localIP))
+        {
+            throw new Exception("Nenhum endereço IPv4 encontrado na máquina.");
+        }
+
+        return localIP;
     }
 }
 

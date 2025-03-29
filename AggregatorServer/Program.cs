@@ -14,23 +14,23 @@ class Agregador
         int PORT;
         string IpServer;
 
-        if (args.Length == 2)
-        {
-            PORT = Convert.ToInt32(args[1]);
-            IpServer = args[0];
-        }
-        else
-        {
-            Console.WriteLine("Uso correto: Agregador <IP> <PORT>");
-            return;
-        }
+        //if (args.Length == 2)
+        //{
+        PORT = 5000;
+        IpServer = GetLocalIPAddress();
+        //}
+        //else
+        //{
+        //    Console.WriteLine("Uso correto: Agregador <IP> <PORT>");
+        //    return;
+        //}
 
         try
         {
             ipAgregador = GetLocalIPAddress();
 
             // Conectar ao servidor
-            serverClient = new TcpClient(IpServer, 6000); // Porta do servidor
+            serverClient = new TcpClient(IpServer, 5000); // Porta do servidor
             serverStream = serverClient.GetStream();
             Console.WriteLine("[AGREGADOR] Conectado ao SERVIDOR!");
 
