@@ -5,17 +5,18 @@ using System.Text;
 
 class Agregador
 {
-
     static string ipAgregador;
+    static TcpClient serverClient;
+    static NetworkStream serverStream;
 
     static void Main(string[] args)
     {
-        int PORT;  
+        int PORT;
         string IpServer;
 
         if (args.Length == 2)
         {
-            PORT = Convert.ToInt32(args[1]);  
+            PORT = Convert.ToInt32(args[1]);
             IpServer = args[0];
         }
         else
@@ -28,62 +29,86 @@ class Agregador
         {
             ipAgregador = GetLocalIPAddress();
 
+            // Conectar ao servidor
+            serverClient = new TcpClient(IpServer, 6000); // Porta do servidor
+            serverStream = serverClient.GetStream();
+            Console.WriteLine("[AGREGADOR] Conectado ao SERVIDOR!");
+
+            // Iniciar listener para WAVYs
             IPAddress ipAddress = IPAddress.Parse(IpServer);
             TcpListener listener = new TcpListener(ipAddress, PORT);
             listener.Start();
-            Console.WriteLine($"AGREGADOR aguardando conexões na porta {PORT}...");
+            Console.WriteLine($"[AGREGADOR] Aguardando conexões na porta {PORT}...");
 
             while (true)
             {
                 using (TcpClient client = listener.AcceptTcpClient())
                 using (NetworkStream stream = client.GetStream())
                 {
-                    Console.WriteLine("Cliente conectado!");
+                    Console.WriteLine("[AGREGADOR] Cliente WAVY conectado!");
 
                     byte[] buffer = new byte[1024];
                     int bytesRead = stream.Read(buffer, 0, buffer.Length);
                     string receivedMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    Console.WriteLine($"Mensagem recebida: {receivedMessage}");
+                    Console.WriteLine($"[AGREGADOR] Mensagem recebida: {receivedMessage}");
 
                     string response = ProcessMessage(receivedMessage);
                     byte[] responseData = Encoding.UTF8.GetBytes(response);
                     stream.Write(responseData, 0, responseData.Length);
-                    Console.WriteLine($"Resposta enviada: {response}");
+                    Console.WriteLine($"[AGREGADOR] Resposta enviada: {response}");
+
+                    // Encaminhar a mensagem para o servidor
+                    SendMessageToServer(receivedMessage);
                 }
             }
         }
-        catch (FormatException)
-        {
-            Console.WriteLine("Erro: O endereço IP fornecido não é válido.");
-        }
         catch (Exception ex)
         {
-            Console.WriteLine($"Erro inesperado");
+            Console.WriteLine($"[AGREGADOR] Erro inesperado: {ex.Message}");
         }
     }
-     static string ProcessMessage(string message)
+
+    static string ProcessMessage(string message)
     {
         if (message.StartsWith("HELLO, I AM WAVY"))
         {
-            return $"ACK,'{ipAgregador}'"; // Confirmação da conexão
+            return $"ACK,'{ipAgregador}'";
         }
         else if (message.StartsWith("STATUS_REQUEST"))
         {
-            return "CURRENT_STATUS:'WAVY_ID':'STATUS'"; // Envio de status atual
+            return "CURRENT_STATUS:'WAVY_ID':'STATUS'";
         }
         else if (message.StartsWith("DATA_CSV"))
         {
-            return "ACK"; // Confirmação da recepção de dados CSV
+            return "ACK";
         }
         else if (message.Equals("QUIT"))
         {
-            return "100 OK"; // Finaliza a comunicação
+            return "100 OK";
         }
         else
         {
-            return "YOU ARE NOT MY WAVY Or I DON’T KNOW YOU!!!"; // Rejeição de conexão desconhecida
+            return "YOU ARE NOT MY WAVY Or I DON’T KNOW YOU!!!";
         }
     }
+
+    static void SendMessageToServer(string message)
+    {
+        try
+        {
+            if (serverClient.Connected)
+            {
+                byte[] data = Encoding.UTF8.GetBytes(message);
+                serverStream.Write(data, 0, data.Length);
+                Console.WriteLine("[AGREGADOR] Mensagem enviada ao SERVIDOR.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AGREGADOR] Erro ao enviar para SERVIDOR: {ex.Message}");
+        }
+    }
+
     static string GetLocalIPAddress()
     {
         string localIP = string.Empty;
@@ -91,7 +116,7 @@ class Agregador
 
         foreach (var ip in host.AddressList)
         {
-            if (ip.AddressFamily == AddressFamily.InterNetwork) 
+            if (ip.AddressFamily == AddressFamily.InterNetwork)
             {
                 localIP = ip.ToString();
                 break;
