@@ -161,7 +161,6 @@ class Agregador
     {
         try
         {
-            // Extrair o ID da WAVY da mensagem
             string[] parts = message.Split(':');
             if (parts.Length < 2 || !parts[0].Equals("DATA_CSV"))
             {
@@ -170,18 +169,33 @@ class Agregador
             }
 
             string wavyId = parts[1].Trim();
-            string data = string.Join(":", parts.Skip(2)); // Restante da mensagem é o conteúdo CSV
-
-            // Nome do ficheiro baseado no ID da WAVY
+            string data = string.Join(":", parts.Skip(2));
             string fileName = $"WAVY_{wavyId}.csv";
 
-            // Guardar os dados no ficheiro
+            // Guarda os dados no ficheiro
             File.AppendAllText(fileName, data + Environment.NewLine);
             Console.WriteLine($"[AGREGADOR] Dados guardados no ficheiro: {fileName}");
+
+            // Verifica se deve enviar os dados
+            if (PreprocessingConfigs.ContainsKey(wavyId))
+            {
+                int volumeToSend = PreprocessingConfigs[wavyId].VolumeToSend;
+
+                int currentLines = File.ReadAllLines(fileName).Length;
+                if (currentLines >= volumeToSend)
+                {
+                    string fullData = File.ReadAllText(fileName);
+                    SendMessageToServer($"DATA_CSV:{wavyId}:{fullData}");
+
+                    // Limpa o ficheiro após envio
+                    File.WriteAllText(fileName, string.Empty);
+                    Console.WriteLine($"[AGREGADOR] Dados enviados e ficheiro {fileName} limpo.");
+                }
+            }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[AGREGADOR] Erro ao guardar dados no ficheiro: {ex.Message}");
+            Console.WriteLine($"[AGREGADOR] Erro ao guardar ou enviar dados: {ex.Message}");
         }
     }
 
