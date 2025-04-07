@@ -4,8 +4,14 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.13.35828.75
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WavyClient", "WavyClient.csproj", "{F50230AA-D3B6-4375-947D-984D2E72325B}"
+	ProjectSection(ProjectDependencies) = postProject
+		{23D5E4C0-709E-42FE-ADF9-C1F08CAACB50} = {23D5E4C0-709E-42FE-ADF9-C1F08CAACB50}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AggregatorServer", "..\AggregatorServer\AggregatorServer.csproj", "{23D5E4C0-709E-42FE-ADF9-C1F08CAACB50}"
+	ProjectSection(ProjectDependencies) = postProject
+		{2DB4D206-E4C2-45D9-AFE2-88A6E1FCE823} = {2DB4D206-E4C2-45D9-AFE2-88A6E1FCE823}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OceanServer", "..\OceanServer\OceanServer.csproj", "{2DB4D206-E4C2-45D9-AFE2-88A6E1FCE823}"
 EndProject
