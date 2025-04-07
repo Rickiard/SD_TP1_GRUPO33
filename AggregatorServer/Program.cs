@@ -4,16 +4,13 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Linq;
 
 class Agregador
 {
     static string ipAgregador;
     static TcpClient serverClient;
     static NetworkStream serverStream;
-
-    // Dicionários para armazenar as configurações
-    static Dictionary<string, WavyConfig> WavyConfigs = new Dictionary<string, WavyConfig>();
-    static Dictionary<string, PreprocessingConfig> PreprocessingConfigs = new Dictionary<string, PreprocessingConfig>();
 
     static void Main(string[] args)
     {
@@ -35,12 +32,8 @@ class Agregador
         {
             ipAgregador = GetLocalIPAddress();
 
-            // Carregar ficheiros de configuração
-            LoadWavyConfigs("wavy_config.txt");
-            LoadPreprocessingConfigs("preprocessing_config.txt");
-
             // Conectar ao servidor
-            serverClient = new TcpClient(IpServer, PORT); // Porta do servidor
+            serverClient = new TcpClient(IpServer, PORT);
             serverStream = serverClient.GetStream();
             Console.WriteLine("[AGREGADOR] Conectado ao SERVIDOR!");
 
@@ -67,7 +60,6 @@ class Agregador
                     stream.Write(responseData, 0, responseData.Length);
                     Console.WriteLine($"[AGREGADOR] Resposta enviada: {response}");
 
-                    // Encaminhar a mensagem para o servidor, se necessário
                     if (receivedMessage.StartsWith("DATA_CSV"))
                     {
                         SaveWavyDataToFile(receivedMessage);
@@ -89,17 +81,13 @@ class Agregador
             string wavyId = message.Split(':')[1].Trim();
             Console.WriteLine($"[AGREGADOR] WAVY ID recebido: {wavyId}");
 
-            // Verificar se a WAVY está configurada
-            if (!WavyConfigs.ContainsKey(wavyId))
+            if (!IsWavyConfigured(wavyId))
             {
                 Console.WriteLine($"[AGREGADOR] WAVY ID {wavyId} não está configurada.");
                 return "DENIED";
             }
 
-            // Atualizar o estado da WAVY para "operação"
-            WavyConfigs[wavyId].Status = "operação";
-            WavyConfigs[wavyId].LastSync = DateTime.Now;
-
+            UpdateWavyStatus(wavyId, "operação");
             return $"ACK:{ipAgregador}";
         }
         else if (message.StartsWith("STATUS_REQUEST:"))
@@ -107,14 +95,13 @@ class Agregador
             string wavyId = message.Split(':')[1].Trim();
             Console.WriteLine($"[AGREGADOR] Requisição de status para WAVY ID: {wavyId}");
 
-            // Verificar se a WAVY está configurada
-            if (!WavyConfigs.ContainsKey(wavyId))
+            string status = GetWavyStatus(wavyId);
+            if (status == null)
             {
                 Console.WriteLine($"[AGREGADOR] WAVY ID {wavyId} não está configurada.");
                 return "DENIED";
             }
 
-            string status = WavyConfigs[wavyId].Status;
             return $"CURRENT_STATUS:{wavyId}:{status}";
         }
         else if (message.StartsWith("DATA_CSV:"))
@@ -144,7 +131,6 @@ class Agregador
                 serverStream.Write(data, 0, data.Length);
                 Console.WriteLine("[AGREGADOR] Mensagem encaminhada ao SERVIDOR.");
 
-                // Ler resposta do servidor
                 byte[] buffer = new byte[1024];
                 int bytesRead = serverStream.Read(buffer, 0, buffer.Length);
                 string serverResponse = Encoding.UTF8.GetString(buffer, 0, bytesRead);
@@ -172,22 +158,18 @@ class Agregador
             string data = string.Join(":", parts.Skip(2));
             string fileName = $"WAVY_{wavyId}.csv";
 
-            // Guarda os dados no ficheiro
             File.AppendAllText(fileName, data + Environment.NewLine);
             Console.WriteLine($"[AGREGADOR] Dados guardados no ficheiro: {fileName}");
 
-            // Verifica se deve enviar os dados
-            if (PreprocessingConfigs.ContainsKey(wavyId))
+            int? volumeToSend = GetVolumeToSend(wavyId);
+            if (volumeToSend.HasValue)
             {
-                int volumeToSend = PreprocessingConfigs[wavyId].VolumeToSend;
-
                 int currentLines = File.ReadAllLines(fileName).Length;
-                if (currentLines >= volumeToSend)
+                if (currentLines >= volumeToSend.Value)
                 {
                     string fullData = File.ReadAllText(fileName);
                     SendMessageToServer($"DATA_CSV:{wavyId}:{fullData}");
 
-                    // Limpa o ficheiro após envio
                     File.WriteAllText(fileName, string.Empty);
                     Console.WriteLine($"[AGREGADOR] Dados enviados e ficheiro {fileName} limpo.");
                 }
@@ -199,64 +181,57 @@ class Agregador
         }
     }
 
-    static void LoadWavyConfigs(string filePath)
+    static bool IsWavyConfigured(string wavyId)
     {
-        try
+        foreach (var line in File.ReadAllLines("wavy_config.txt"))
         {
-            foreach (var line in File.ReadAllLines(filePath))
-            {
-                var parts = line.Split(':');
-                if (parts.Length == 4)
-                {
-                    string wavyId = parts[0];
-                    string status = parts[1];
-                    string dataTypes = parts[2].Trim('[', ']'); // Remover colchetes
-                    string lastSync = parts[3];
-
-                    WavyConfigs[wavyId] = new WavyConfig
-                    {
-                        Status = status,
-                        DataTypes = dataTypes.Split(','),
-                        LastSync = DateTime.Parse(lastSync)
-                    };
-                }
-            }
-            Console.WriteLine("[CONFIG] Ficheiro de configuração das WAVYs carregado com sucesso.");
+            var parts = line.Split(':');
+            if (parts[0].Trim() == wavyId)
+                return true;
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[CONFIG] Erro ao carregar ficheiro de configuração das WAVYs: {ex.Message}");
-        }
+        return false;
     }
 
-    static void LoadPreprocessingConfigs(string filePath)
+    static string GetWavyStatus(string wavyId)
     {
-        try
+        foreach (var line in File.ReadAllLines("wavy_config.txt"))
         {
-            foreach (var line in File.ReadAllLines(filePath))
-            {
-                var parts = line.Split(':');
-                if (parts.Length == 4)
-                {
-                    string wavyId = parts[0];
-                    string preprocessing = parts[1];
-                    int volumeToSend = int.Parse(parts[2]);
-                    string serverAddress = parts[3];
+            var parts = line.Split(':');
+            if (parts[0].Trim() == wavyId && parts.Length >= 2)
+                return parts[1].Trim();
+        }
+        return null;
+    }
 
-                    PreprocessingConfigs[wavyId] = new PreprocessingConfig
-                    {
-                        PreprocessingType = preprocessing,
-                        VolumeToSend = volumeToSend,
-                        ServerAddress = serverAddress
-                    };
-                }
-            }
-            Console.WriteLine("[CONFIG] Ficheiro de configuração de pré-processamento carregado com sucesso.");
-        }
-        catch (Exception ex)
+    static void UpdateWavyStatus(string wavyId, string newStatus)
+    {
+        var lines = File.ReadAllLines("wavy_config.txt");
+        for (int i = 0; i < lines.Length; i++)
         {
-            Console.WriteLine($"[CONFIG] Erro ao carregar ficheiro de configuração de pré-processamento: {ex.Message}");
+            var parts = lines[i].Split(':');
+            if (parts[0].Trim() == wavyId && parts.Length == 4)
+            {
+                parts[1] = $" {newStatus}";
+                parts[3] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss");
+                lines[i] = string.Join(":", parts);
+                break;
+            }
         }
+        File.WriteAllLines("wavy_config.txt", lines);
+    }
+
+    static int? GetVolumeToSend(string wavyId)
+    {
+        foreach (var line in File.ReadAllLines("preprocessing_config.txt"))
+        {
+            var parts = line.Split(':');
+            if (parts[0].Trim() == wavyId && parts.Length >= 3)
+            {
+                if (int.TryParse(parts[2], out int volume))
+                    return volume;
+            }
+        }
+        return null;
     }
 
     static string GetLocalIPAddress()
@@ -281,31 +256,3 @@ class Agregador
         return localIP;
     }
 }
-
-// Classe para representar a configuração de uma WAVY
-public class WavyConfig
-{
-    public string Status { get; set; }
-    public string[] DataTypes { get; set; }
-    public DateTime LastSync { get; set; }
-}
-
-// Classe para representar a configuração de pré-processamento
-public class PreprocessingConfig
-{
-    public string PreprocessingType { get; set; }
-    public int VolumeToSend { get; set; }
-    public string ServerAddress { get; set; }
-}
-
-// Exemplo de conteúdo dos ficheiros de configuração:
-
-//Ficheiro de Configuração das WAVYs (wavy_config.txt)
-//WAVY001: operação: [acelerometro, giroscopio]:2024 - 03 - 25T14: 30:00
-//WAVY002: manutenção: [hidrofone]:2024 - 03 - 20T10: 15:00
-//WAVY003: desativada: [camera]:2024 - 03 - 10T08: 00:00
-
-//Ficheiro de Pré-processamento (preprocessing_config.txt)
-//WAVY001: filtragem: 1024:192.168.1.10
-//WAVY002: agregacao: 2048:192.168.1.20
-//WAVY003: normalizacao: 512:192.168.1.30
