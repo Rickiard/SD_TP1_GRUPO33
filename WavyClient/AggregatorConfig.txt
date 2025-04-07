@@ -1,0 +1,8 @@
+WAVY_ID:12345:pré_processamento:500MB:Server_A1  
+WAVY_ID:12345:status:2025-04-03T14:30:00Z  
+
+WAVY_ID:67890:pré_processamento:1.2GB:Server_B2  
+WAVY_ID:67890:status:2025-04-03T14:35:00Z  
+
+WAVY_ID:54321:pré_processamento:750MB:Server_C3  
+WAVY_ID:54321:status:2025-04-03T14:40:00Z  
