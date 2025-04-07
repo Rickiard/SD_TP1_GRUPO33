@@ -63,7 +63,6 @@ class Agregador
                     if (receivedMessage.StartsWith("DATA_CSV"))
                     {
                         SaveWavyDataToFile(receivedMessage);
-                        SendMessageToServer(receivedMessage);
                     }
                 }
             }
@@ -167,11 +166,11 @@ class Agregador
                 int currentLines = File.ReadAllLines(fileName).Length;
                 if (currentLines >= volumeToSend.Value)
                 {
-                    string fullData = File.ReadAllText(fileName);
-                    SendMessageToServer($"DATA_CSV:{wavyId}:{fullData}");
+                    string aggregatedData = AggregateData(fileName);
+                    SendMessageToServer($"DATA_CSV:{wavyId}:{aggregatedData}");
 
                     File.WriteAllText(fileName, string.Empty);
-                    Console.WriteLine($"[AGREGADOR] Dados enviados e ficheiro {fileName} limpo.");
+                    Console.WriteLine($"[AGREGADOR] Dados agregados enviados e ficheiro {fileName} limpo.");
                 }
             }
         }
@@ -179,6 +178,14 @@ class Agregador
         {
             Console.WriteLine($"[AGREGADOR] Erro ao guardar ou enviar dados: {ex.Message}");
         }
+    }
+
+    static string AggregateData(string fileName)
+    {
+        var lines = File.ReadAllLines(fileName);
+        // Implementar lógica de agregação aqui
+        // Exemplo: concatenar todas as linhas
+        return string.Join(Environment.NewLine, lines);
     }
 
     static bool IsWavyConfigured(string wavyId)
