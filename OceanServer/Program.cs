@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -7,6 +8,7 @@ using System.Threading;
 class TCPServer
 {
     private static Mutex mutex = new Mutex();
+    private const string DataDirectory = "ReceivedData";
 
     static void HandleClient(object obj)
     {
@@ -25,24 +27,49 @@ class TCPServer
 
             mutex.WaitOne();
             Console.WriteLine($"Recebido de {((IPEndPoint)client.Client.RemoteEndPoint).Address}: {message}");
-            mutex.ReleaseMutex();
 
-            if (message == "QUIT")
+            if (message.StartsWith("DATA_CSV"))
+            {
+                ProcessCSVData(message);
+                stream.Write(okResponse, 0, okResponse.Length); // Confirmação de receção
+            }
+            else if (message == "QUIT")
             {
                 byte[] byeResponse = Encoding.UTF8.GetBytes("400 BYE\n");
                 stream.Write(byeResponse, 0, byeResponse.Length);
                 break;
             }
+            mutex.ReleaseMutex();
         }
 
         client.Close();
     }
 
+    static void ProcessCSVData(string message)
+    {
+        string[] parts = message.Split(':');
+        if (parts.Length < 3) return;
+
+        string wavyID = parts[1];
+        string csvData = parts[2];
+
+        string filePath = Path.Combine(DataDirectory, $"WAVY_{wavyID}.csv");
+        Directory.CreateDirectory(DataDirectory);
+
+        mutex.WaitOne();
+        File.AppendAllText(filePath, csvData + "\n");
+        Console.WriteLine($"Dados de {wavyID} armazenados em {filePath}");
+        mutex.ReleaseMutex();
+    }
+
     static void Main()
     {
-        TcpListener server = new TcpListener(IPAddress.Any, 5000);
+        string localIP = GetLocalIPAddress();
+        int port = 5000;
+
+        TcpListener server = new TcpListener(IPAddress.Any, port);
         server.Start();
-        Console.WriteLine("Servidor TCP iniciado na porta 5000...");
+        Console.WriteLine($"Servidor TCP iniciado em {localIP}:{port}...");
 
         while (true)
         {
@@ -51,4 +78,19 @@ class TCPServer
             clientThread.Start(client);
         }
     }
+
+    static string GetLocalIPAddress()
+    {
+        string localIP = "127.0.0.1";
+        foreach (var ip in Dns.GetHostEntry(Dns.GetHostName()).AddressList)
+        {
+            if (ip.AddressFamily == AddressFamily.InterNetwork)
+            {
+                localIP = ip.ToString();
+                break;
+            }
+        }
+        return localIP;
+    }
 }
+
