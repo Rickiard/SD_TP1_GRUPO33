@@ -39,33 +39,57 @@ class Agregador
 
             // Iniciar listener para WAVYs
             IPAddress ipAddress = IPAddress.Parse(ipAgregador);
-            TcpListener listener = new TcpListener(ipAddress, PORT);
+            TcpListener listener = new TcpListener(ipAddress, 4000);
             listener.Start();
-            Console.WriteLine($"[AGREGADOR] Aguardando conexões em {ipAgregador} na porta {PORT}...");
+            Console.WriteLine($"[AGREGADOR] Aguardando conexões em {ipAgregador} na porta 4000...");
 
             while (true)
             {
-                using (TcpClient client = listener.AcceptTcpClient())
-                using (NetworkStream stream = client.GetStream())
+                TcpClient client = listener.AcceptTcpClient();
+                Console.WriteLine("[AGREGADOR] Cliente WAVY conectado!");
+
+                // Gerir a comunicação com o cliente de forma contínua
+                Task.Run(() =>
                 {
-                    Console.WriteLine("[AGREGADOR] Cliente WAVY conectado!");
-
-                    byte[] buffer = new byte[1024];
-                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                    string receivedMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    Console.WriteLine($"[AGREGADOR] Mensagem recebida: {receivedMessage}");
-
-                    string response = ProcessMessage(receivedMessage);
-                    byte[] responseData = Encoding.UTF8.GetBytes(response);
-                    stream.Write(responseData, 0, responseData.Length);
-                    Console.WriteLine($"[AGREGADOR] Resposta enviada: {response}");
-
-                    if (receivedMessage.StartsWith("DATA_CSV"))
+                    using (client)
+                    using (NetworkStream stream = client.GetStream())
                     {
-                        SaveWavyDataToFile(receivedMessage);
+                        byte[] buffer = new byte[1024];
+                        while (true)
+                        {
+                            try
+                            {
+                                int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                                if (bytesRead == 0)
+                                {
+                                    // Cliente fechou a conexão
+                                    Console.WriteLine("[AGREGADOR] Cliente WAVY desconectado.");
+                                    break;
+                                }
+
+                                string receivedMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                                Console.WriteLine($"[AGREGADOR] Mensagem recebida: {receivedMessage}");
+
+                                string response = ProcessMessage(receivedMessage);
+                                byte[] responseData = Encoding.UTF8.GetBytes(response);
+                                stream.Write(responseData, 0, responseData.Length);
+                                Console.WriteLine($"[AGREGADOR] Resposta enviada: {response}");
+
+                                if (receivedMessage.StartsWith("DATA_CSV"))
+                                {
+                                    SaveWavyDataToFile(receivedMessage);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[AGREGADOR] Erro: {ex.Message}");
+                                break;
+                            }
+                        }
                     }
-                }
+                });
             }
+
         }
         catch (Exception ex)
         {
