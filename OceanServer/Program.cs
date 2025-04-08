@@ -62,10 +62,9 @@ class TCPServer
         mutex.ReleaseMutex();
     }
 
-    static void Main()
+    static void StartServer(int port)
     {
         string localIP = GetLocalIPAddress();
-        int port = 5000;
 
         TcpListener server = new TcpListener(IPAddress.Any, port);
         server.Start();
@@ -92,5 +91,16 @@ class TCPServer
         }
         return localIP;
     }
-}
 
+    static void Main()
+    {
+        // Iniciar dois servidores em threads separadas
+        Thread server1 = new Thread(() => StartServer(5000));
+        Thread server2 = new Thread(() => StartServer(5001));
+
+        server1.Start();
+        server2.Start();
+
+        Console.WriteLine("Dois servidores TCP estão em execução...");
+    }
+}

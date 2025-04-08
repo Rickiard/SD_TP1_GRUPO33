@@ -10,18 +10,71 @@ class Wavy
     const int RETRY_DELAY_MS = 5000; // Tempo de espera entre tentativas (em milissegundos)
     const int CONNECTION_TIMEOUT_MS = 10000; // Timeout para estabelecer conexão (em milissegundos)
     const string PROGRESS_FILE = "progress.txt"; // Ficheiro para guardar o progresso
+    static bool wavy = true; // Variável para controlar o estado do Wavy
 
     static void Main(string[] args)
     {
-        if (args.Length != 2)
+        if (args.Length != 4)
         {
             Console.WriteLine("Uso: Wavy <IP do Agregador> <Porta>");
             return;
         }
 
-        string wavyId = "001";
-        string aggregatorIp = args[0];
-        int aggregatorPort = Convert.ToInt32(args[1]);
+        StartWavy("001", args[0], args[1], "buoy - Cópia.csv");
+        if (!wavy)
+        {
+            StartWavy("001", args[0], args[1], "buoy - Cópia.csv");
+        }
+        if (!wavy)
+        {
+            StartWavy("001", args[0], args[1], "buoy - Cópia.csv");
+        }
+
+        wavy = true; // Reiniciar a variável wavy para o próximo Wavy
+        File.Delete(PROGRESS_FILE);
+
+        StartWavy("002", args[0], args[2], "buoy - Cópia (2).csv");
+        if (!wavy)
+        {
+            StartWavy("002", args[0], args[2], "buoy - Cópia (2).csv");
+        }
+        if (!wavy)
+        {
+            StartWavy("002", args[0], args[2], "buoy - Cópia (2).csv");
+        }
+
+        wavy = true; // Reiniciar a variável wavy para o próximo Wavy
+        File.Delete(PROGRESS_FILE);
+
+        StartWavy("003", args[0], args[3], "buoy - Cópia (3).csv");
+        if (!wavy)
+        {
+            StartWavy("003", args[0], args[3], "buoy - Cópia (3).csv");
+        }
+        if (!wavy)
+        {
+            StartWavy("003", args[0], args[3], "buoy - Cópia (3).csv");
+        }
+
+        wavy = true; // Reiniciar a variável wavy para o próximo Wavy
+        File.Delete(PROGRESS_FILE);
+
+        StartWavy("004", args[0], args[3], "buoy - Cópia (4).csv");
+        if (!wavy)
+        {
+            StartWavy("004", args[0], args[3], "buoy - Cópia (4).csv");
+        }
+        if (!wavy)
+        {
+            StartWavy("004", args[0], args[3], "buoy - Cópia (4).csv");
+        }
+    }
+
+    static void StartWavy(string id, string ip, string port, string filename)
+    {
+        string wavyId = id;
+        string aggregatorIp = ip;
+        int aggregatorPort = Convert.ToInt32(port);
 
         TcpClient client = null;
         NetworkStream stream = null;
@@ -42,6 +95,11 @@ class Wavy
             // Receber resposta do agregador
             string response = ReceiveMessageWithRetry(stream);
             Console.WriteLine("AGREGADOR: " + response);
+            if (response == "DENIED")
+            {
+                wavy = false;
+                return;
+            }
 
             if (response.StartsWith("ACK"))
             {
@@ -64,9 +122,9 @@ class Wavy
                 }
 
                 // Ler dados do ficheiro CSV e enviá-los aos poucos
-                if (File.Exists("buoy.csv"))
+                if (File.Exists(filename))
                 {
-                    string[] lines = File.ReadAllLines("buoy.csv");
+                    string[] lines = File.ReadAllLines(filename);
                     for (int i = lastProcessedLine; i < lines.Length; i++)
                     {
                         string line = lines[i];
@@ -108,18 +166,18 @@ class Wavy
                 }
                 else
                 {
-                    Console.WriteLine("Erro: Ficheiro buoy.csv não encontrado.");
+                    Console.WriteLine("Erro: Ficheiro não encontrado.");
                 }
+
+                // Finalizar comunicação
+                SendMessage(stream, "QUIT");
+                response = ReceiveMessageWithRetry(stream);
+                Console.WriteLine("AGREGADOR: " + response);
             }
             else if (response.StartsWith("DENIED"))
             {
                 Console.WriteLine("Conexão negada pelo agregador.");
             }
-
-            // Finalizar comunicação
-            SendMessage(stream, "QUIT");
-            response = ReceiveMessageWithRetry(stream);
-            Console.WriteLine("AGREGADOR: " + response);
         }
         catch (Exception e)
         {
@@ -168,7 +226,8 @@ class Wavy
             }
         }
 
-        throw new Exception("Não foi possível conectar ao agregador após várias tentativas.");
+        //throw new Exception("Não foi possível conectar ao agregador após várias tentativas.");
+        return null;
     }
 
     static void Reconnect(ref TcpClient client, ref NetworkStream stream, string ip, int port)
