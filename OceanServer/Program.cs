@@ -13,36 +13,64 @@ class TCPServer
     static void HandleClient(object obj)
     {
         TcpClient client = (TcpClient)obj;
-        NetworkStream stream = client.GetStream();
-        byte[] buffer = new byte[1024];
-        int bytesRead;
+        NetworkStream stream = null;
 
-        // Enviar resposta inicial "100 OK"
-        byte[] okResponse = Encoding.UTF8.GetBytes("100 OK\n");
-        stream.Write(okResponse, 0, okResponse.Length);
-
-        while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) > 0)
+        try
         {
-            string message = Encoding.UTF8.GetString(buffer, 0, bytesRead).Trim();
+            stream = client.GetStream();
+            byte[] buffer = new byte[1024];
+            int bytesRead;
 
-            mutex.WaitOne();
-            Console.WriteLine($"Recebido de {((IPEndPoint)client.Client.RemoteEndPoint).Address}: {message}");
+            // Enviar resposta inicial "100 OK"
+            byte[] okResponse = Encoding.UTF8.GetBytes("100 OK\n");
+            stream.Write(okResponse, 0, okResponse.Length);
 
-            if (message.StartsWith("DATA_CSV"))
+            while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) > 0)
             {
-                ProcessCSVData(message);
-                stream.Write(okResponse, 0, okResponse.Length); // Confirmação de receção
+                string message = Encoding.UTF8.GetString(buffer, 0, bytesRead).Trim();
+
+                bool hasMutex = false; // Track whether the mutex has been acquired
+                try
+                {
+                    mutex.WaitOne();
+                    hasMutex = true;
+
+                    Console.WriteLine($"Recebido de {((IPEndPoint)client.Client.RemoteEndPoint).Address}: {message}");
+
+                    if (message.StartsWith("DATA_CSV"))
+                    {
+                        ProcessCSVData(message);
+                        stream.Write(okResponse, 0, okResponse.Length); // Confirmação de receção
+                    }
+                    else if (message == "QUIT")
+                    {
+                        byte[] byeResponse = Encoding.UTF8.GetBytes("400 BYE\n");
+                        stream.Write(byeResponse, 0, byeResponse.Length);
+                        break;
+                    }
+                }
+                finally
+                {
+                    if (hasMutex)
+                    {
+                        mutex.ReleaseMutex(); // Release the mutex only if it was acquired
+                    }
+                }
             }
-            else if (message == "QUIT")
-            {
-                byte[] byeResponse = Encoding.UTF8.GetBytes("400 BYE\n");
-                stream.Write(byeResponse, 0, byeResponse.Length);
-                break;
-            }
-            mutex.ReleaseMutex();
         }
-
-        client.Close();
+        catch (IOException ex)
+        {
+            Console.WriteLine($"Erro de E/S: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro inesperado: {ex.Message}");
+        }
+        finally
+        {
+            client?.Close();
+            stream?.Close();
+        }
     }
 
     static void ProcessCSVData(string message)
@@ -56,10 +84,22 @@ class TCPServer
         string filePath = Path.Combine(DataDirectory, $"WAVY_{wavyID}.csv");
         Directory.CreateDirectory(DataDirectory);
 
-        mutex.WaitOne();
-        File.AppendAllText(filePath, csvData + "\n");
-        Console.WriteLine($"Dados de {wavyID} armazenados em {filePath}");
-        mutex.ReleaseMutex();
+        bool hasMutex = false; // Track whether the mutex has been acquired
+        try
+        {
+            mutex.WaitOne();
+            hasMutex = true;
+
+            File.AppendAllText(filePath, csvData + "\n");
+            Console.WriteLine($"Dados de {wavyID} armazenados em {filePath}");
+        }
+        finally
+        {
+            if (hasMutex)
+            {
+                mutex.ReleaseMutex(); // Release the mutex only if it was acquired
+            }
+        }
     }
 
     static void StartServer(int port)
@@ -72,9 +112,16 @@ class TCPServer
 
         while (true)
         {
-            TcpClient client = server.AcceptTcpClient();
-            Thread clientThread = new Thread(HandleClient);
-            clientThread.Start(client);
+            try
+            {
+                TcpClient client = server.AcceptTcpClient();
+                Thread clientThread = new Thread(HandleClient);
+                clientThread.Start(client);
+            }
+            catch (SocketException ex)
+            {
+                Console.WriteLine($"Erro ao aceitar conexão: {ex.Message}");
+            }
         }
     }
 
