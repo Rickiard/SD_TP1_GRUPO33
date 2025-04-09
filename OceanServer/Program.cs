@@ -60,11 +60,11 @@ class TCPServer
         }
         catch (IOException ex)
         {
-            Console.WriteLine($"Erro de E/S: {ex.Message}");
+            //Console.WriteLine($"Erro de E/S: {ex.Message}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Erro inesperado: {ex.Message}");
+            //Console.WriteLine($"Erro inesperado: {ex.Message}");
         }
         finally
         {
@@ -75,29 +75,37 @@ class TCPServer
 
     static void ProcessCSVData(string message)
     {
-        string[] parts = message.Split(':');
-        if (parts.Length < 3) return;
+        string[] parts = message.Split(':', 3); // Dividir apenas em duas partes
+        if (parts.Length < 2) return;
 
-        string wavyID = parts[1];
-        string csvData = parts[2];
+        string csvData = parts[2]; // O CSV completo está na segunda parte
 
-        string filePath = Path.Combine(DataDirectory, $"WAVY_{wavyID}.csv");
+        if (string.IsNullOrWhiteSpace(csvData))
+        {
+            Console.WriteLine("Linha em branco ignorada.");
+            return;
+        }
+
+        string filePath = Path.Combine(DataDirectory, $"{parts[1]}.csv");
         Directory.CreateDirectory(DataDirectory);
 
-        bool hasMutex = false; // Track whether the mutex has been acquired
+        bool hasMutex = false;
         try
         {
             mutex.WaitOne();
             hasMutex = true;
 
             File.AppendAllText(filePath, csvData + "\n");
-            Console.WriteLine($"Dados de {wavyID} armazenados em {filePath}");
+            Console.WriteLine($"Dados agregados armazenados em {filePath}");
+
+            // Limpar linhas em branco do ficheiro CSV
+            CleanEmptyLinesFromCSV(filePath);
         }
         finally
         {
             if (hasMutex)
             {
-                mutex.ReleaseMutex(); // Release the mutex only if it was acquired
+                mutex.ReleaseMutex();
             }
         }
     }
@@ -137,6 +145,32 @@ class TCPServer
             }
         }
         return localIP;
+    }
+
+    static void CleanEmptyLinesFromCSV(string filePath)
+    {
+        try
+        {
+            if (!File.Exists(filePath))
+            {
+                Console.WriteLine($"Arquivo {filePath} não encontrado.");
+                return;
+            }
+
+            // Ler todas as linhas do ficheiro, ignorando as linhas em branco
+            var nonEmptyLines = File.ReadAllLines(filePath)
+                                    .Where(line => !string.IsNullOrWhiteSpace(line))
+                                    .ToList();
+
+            // Reescrever o ficheiro apenas com as linhas não vazias
+            File.WriteAllLines(filePath, nonEmptyLines);
+
+            Console.WriteLine($"Linhas em branco removidas do ficheiro {filePath}.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao limpar linhas em branco do ficheiro {filePath}: {ex.Message}");
+        }
     }
 
     static void Main()

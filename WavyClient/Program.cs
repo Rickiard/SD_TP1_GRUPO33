@@ -170,9 +170,9 @@ class Wavy
                 }
 
                 // Finalizar comunicação
-                SendMessage(stream, "QUIT");
-                response = ReceiveMessageWithRetry(stream);
-                Console.WriteLine("AGREGADOR: " + response);
+                //SendMessage(stream, "QUIT");
+                //response = ReceiveMessageWithRetry(stream);
+                //Console.WriteLine("AGREGADOR: " + response);
             }
             else if (response.StartsWith("DENIED"))
             {

@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 
 class AgregadorManager
 {
+    static Dictionary<string, List<string>> dataBuffer = new Dictionary<string, List<string>>();
+
     static void Main(string[] args)
     {
         if (args.Length != 3)
@@ -192,7 +194,7 @@ class AgregadorManager
         try
         {
             string[] parts = message.Split(':');
-            if (parts.Length < 2 || !parts[0].Equals("DATA_CSV"))
+            if (parts.Length < 3 || !parts[0].Equals("DATA_CSV"))
             {
                 Console.WriteLine($"[{aggregatorId}] Formato de mensagem inválido para salvar dados.");
                 return;
@@ -200,21 +202,30 @@ class AgregadorManager
 
             string wavyId = parts[1].Trim();
             string data = string.Join(":", parts.Skip(2));
-            string fileName = $"{aggregatorId}_WAVY_{wavyId}.csv"; // Nome único para o arquivo
-            File.AppendAllText(fileName, data + Environment.NewLine);
-            Console.WriteLine($"[{aggregatorId}] Dados guardados no ficheiro: {fileName}");
 
-            int? volumeToSend = GetVolumeToSend(wavyId, aggregatorId);
-            if (volumeToSend.HasValue)
+            // Adicionar dados ao buffer
+            if (!dataBuffer.ContainsKey(wavyId))
             {
-                int currentLines = File.ReadAllLines(fileName).Length;
-                if (currentLines >= volumeToSend.Value)
-                {
-                    string aggregatedData = AggregateData(fileName);
-                    SendMessageToServer($"DATA_CSV:{wavyId}:{aggregatedData}", aggregatorId);
-                    File.WriteAllText(fileName, string.Empty);
-                    Console.WriteLine($"[{aggregatorId}] Dados agregados enviados e ficheiro {fileName} limpo.");
-                }
+                dataBuffer[wavyId] = new List<string>();
+            }
+            dataBuffer[wavyId].Add(data);
+
+            // Persistir no ficheiro local como backup
+            string fileName = $"{aggregatorId}_WAVY_{wavyId}.csv";
+            File.AppendAllText(fileName, data + Environment.NewLine);
+
+            // Verificar se o limite foi atingido
+            int? volumeToSend = GetVolumeToSend(wavyId, aggregatorId);
+            if (volumeToSend.HasValue && dataBuffer[wavyId].Count >= volumeToSend.Value)
+            {
+                // Enviar dados acumulados ao OceanServer
+                string aggregatedData = string.Join(Environment.NewLine, dataBuffer[wavyId]);
+                SendMessageToServer($"DATA_CSV:{wavyId}:{aggregatedData}", aggregatorId);
+
+                // Limpar buffer e ficheiro local após envio bem-sucedido
+                dataBuffer[wavyId].Clear();
+                File.WriteAllText(fileName, string.Empty);
+                Console.WriteLine($"[{aggregatorId}] Dados agregados enviados e buffer limpo para {wavyId}.");
             }
         }
         catch (Exception ex)
@@ -222,6 +233,7 @@ class AgregadorManager
             Console.WriteLine($"[{aggregatorId}] Erro ao guardar ou enviar dados: {ex.Message}");
         }
     }
+
 
     static string AggregateData(string fileName)
     {
@@ -233,7 +245,7 @@ class AgregadorManager
 
     static bool IsWavyConfigured(string wavyId, string aggregatorId)
     {
-        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome único para o arquivo de configuração
+        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome único para o ficheiro de configuração
         foreach (var line in File.ReadAllLines(configFileName))
         {
             var parts = line.Split(':');
@@ -245,7 +257,7 @@ class AgregadorManager
 
     static string GetWavyStatus(string wavyId, string aggregatorId)
     {
-        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome único para o arquivo de configuração
+        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome único para o ficheiro de configuração
         foreach (var line in File.ReadAllLines(configFileName))
         {
             var parts = line.Split(':');
@@ -257,7 +269,7 @@ class AgregadorManager
 
     static void UpdateWavyStatus(string wavyId, string newStatus, string aggregatorId)
     {
-        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome único para o arquivo de configuração
+        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome único para o ficheiro de configuração
         var lines = File.ReadAllLines(configFileName);
         for (int i = 0; i < lines.Length; i++)
         {
@@ -275,7 +287,7 @@ class AgregadorManager
 
     static int? GetVolumeToSend(string wavyId, string aggregatorId)
     {
-        string preprocessingFileName = $"{aggregatorId}_preprocessing_config.txt"; // Nome único para o arquivo de pré-processamento
+        string preprocessingFileName = $"{aggregatorId}_preprocessing_config.txt"; // Nome único para o ficheiro de pré-processamento
         foreach (var line in File.ReadAllLines(preprocessingFileName))
         {
             var parts = line.Split(':');
