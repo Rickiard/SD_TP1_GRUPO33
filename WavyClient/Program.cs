@@ -9,8 +9,7 @@ class Wavy
     const int MAX_RETRIES = 5; // Número máximo de tentativas de reconexão
     const int RETRY_DELAY_MS = 5000; // Tempo de espera entre tentativas (em milissegundos)
     const int CONNECTION_TIMEOUT_MS = 10000; // Timeout para estabelecer conexão (em milissegundos)
-    const string PROGRESS_FILE = "progress.txt"; // Ficheiro para guardar o progresso
-    static bool wavy = true; // Variável para controlar o estado do Wavy
+    static Mutex mutex = new Mutex(); // Mutex para sincronizar acesso ao arquivo de progresso
 
     static void Main(string[] args)
     {
@@ -20,57 +19,63 @@ class Wavy
             return;
         }
 
-        StartWavy("001", args[0], args[1], "buoy - Cópia.csv");
-        if (!wavy)
+        // Criar threads para executar as WAVYs simultaneamente
+        Thread wavy1 = new Thread(() => ExecuteWavy("001", args[0], args[1], "buoy - Cópia.csv"));
+        Thread wavy2 = new Thread(() => ExecuteWavy("002", args[0], args[2], "buoy - Cópia (2).csv"));
+        Thread wavy3 = new Thread(() => ExecuteWavy("003", args[0], args[3], "buoy - Cópia (3).csv"));
+        Thread wavy4 = new Thread(() => ExecuteWavy("004", args[0], args[3], "buoy - Cópia (4).csv"));
+
+        // Iniciar as threads
+        wavy1.Start();
+        wavy2.Start();
+        wavy3.Start();
+        wavy4.Start();
+
+        // Aguardar a conclusão das threads
+        wavy1.Join();
+        wavy2.Join();
+        wavy3.Join();
+        wavy4.Join();
+
+        Console.WriteLine("Todas as WAVYs foram concluídas.");
+    }
+
+    static void ExecuteWavy(string id, string ip, string port, string filename)
+    {
+        bool wavy = true; // Variável local para controlar o estado da WAVY
+        string progressFile = $"progress_WAVY{id}.txt"; // Arquivo de progresso específico para cada WAVY
+
+        // Tentar executar a WAVY até 3 vezes, se necessário
+        for (int attempt = 1; attempt <= 3; attempt++)
         {
-            StartWavy("001", args[0], args[1], "buoy - Cópia.csv");
-        }
-        if (!wavy)
-        {
-            StartWavy("001", args[0], args[1], "buoy - Cópia.csv");
+            Console.WriteLine($"Iniciando WAVY{id}, tentativa {attempt}...");
+            StartWavy(id, ip, port, filename, ref wavy, progressFile);
+
+            if (wavy)
+            {
+                Console.WriteLine($"WAVY{id} concluída com sucesso.");
+                break;
+            }
+
+            Console.WriteLine($"WAVY{id} falhou na tentativa {attempt}. Retentando...");
         }
 
-        wavy = true; // Reiniciar a variável wavy para o próximo Wavy
-        File.Delete(PROGRESS_FILE);
-
-        StartWavy("002", args[0], args[2], "buoy - Cópia (2).csv");
-        if (!wavy)
+        // Reiniciar o estado para a próxima execução
+        mutex.WaitOne();
+        try
         {
-            StartWavy("002", args[0], args[2], "buoy - Cópia (2).csv");
+            if (File.Exists(progressFile))
+            {
+                File.Delete(progressFile);
+            }
         }
-        if (!wavy)
+        finally
         {
-            StartWavy("002", args[0], args[2], "buoy - Cópia (2).csv");
-        }
-
-        wavy = true; // Reiniciar a variável wavy para o próximo Wavy
-        File.Delete(PROGRESS_FILE);
-
-        StartWavy("003", args[0], args[3], "buoy - Cópia (3).csv");
-        if (!wavy)
-        {
-            StartWavy("003", args[0], args[3], "buoy - Cópia (3).csv");
-        }
-        if (!wavy)
-        {
-            StartWavy("003", args[0], args[3], "buoy - Cópia (3).csv");
-        }
-
-        wavy = true; // Reiniciar a variável wavy para o próximo Wavy
-        File.Delete(PROGRESS_FILE);
-
-        StartWavy("004", args[0], args[3], "buoy - Cópia (4).csv");
-        if (!wavy)
-        {
-            StartWavy("004", args[0], args[3], "buoy - Cópia (4).csv");
-        }
-        if (!wavy)
-        {
-            StartWavy("004", args[0], args[3], "buoy - Cópia (4).csv");
+            mutex.ReleaseMutex();
         }
     }
 
-    static void StartWavy(string id, string ip, string port, string filename)
+    static void StartWavy(string id, string ip, string port, string filename, ref bool wavy, string progressFile)
     {
         string wavyId = id;
         string aggregatorIp = ip;
@@ -82,8 +87,8 @@ class Wavy
         try
         {
             // Carregar o progresso salvo
-            int lastProcessedLine = LoadProgress();
-            Console.WriteLine($"Última linha processada: {lastProcessedLine}");
+            int lastProcessedLine = LoadProgress(progressFile);
+            Console.WriteLine($"Última linha processada para WAVY{id}: {lastProcessedLine}");
 
             client = ConnectToAggregator(aggregatorIp, aggregatorPort);
             stream = client.GetStream();
@@ -103,24 +108,6 @@ class Wavy
 
             if (response.StartsWith("ACK"))
             {
-                // Extrair IP do ACK, se necessário
-                string ackIp = response.Split(':')[1];
-                Console.WriteLine($"Conectado ao agregador em {ackIp}");
-
-                // Solicitar estado atual
-                string statusRequest = $"STATUS_REQUEST:WAVY{wavyId}";
-                SendMessage(stream, statusRequest);
-
-                response = ReceiveMessageWithRetry(stream);
-                Console.WriteLine("AGREGADOR: " + response);
-
-                if (response.StartsWith("CURRENT_STATUS"))
-                {
-                    string[] parts = response.Split(':');
-                    string state = parts.Length > 2 ? parts[2] : "UNKNOWN";
-                    Console.WriteLine($"Estado atual: {state}");
-                }
-
                 // Ler dados do ficheiro CSV e enviá-los aos poucos
                 if (File.Exists(filename))
                 {
@@ -146,7 +133,17 @@ class Wavy
                                     if (response.StartsWith("ACK"))
                                     {
                                         success = true;
-                                        SaveProgress(i); // Guardar progresso após envio bem-sucedido
+
+                                        // Guardar progresso após envio bem-sucedido
+                                        mutex.WaitOne();
+                                        try
+                                        {
+                                            SaveProgress(progressFile, i);
+                                        }
+                                        finally
+                                        {
+                                            mutex.ReleaseMutex();
+                                        }
                                     }
                                     else
                                     {
@@ -168,11 +165,6 @@ class Wavy
                 {
                     Console.WriteLine("Erro: Ficheiro não encontrado.");
                 }
-
-                // Finalizar comunicação
-                //SendMessage(stream, "QUIT");
-                //response = ReceiveMessageWithRetry(stream);
-                //Console.WriteLine("AGREGADOR: " + response);
             }
             else if (response.StartsWith("DENIED"))
             {
@@ -187,6 +179,41 @@ class Wavy
         {
             stream?.Close();
             client?.Close();
+        }
+    }
+
+    static int LoadProgress(string progressFile)
+    {
+        mutex.WaitOne();
+        try
+        {
+            if (File.Exists(progressFile))
+            {
+                string content = File.ReadAllText(progressFile);
+                if (int.TryParse(content, out int progress))
+                {
+                    return progress;
+                }
+            }
+        }
+        finally
+        {
+            mutex.ReleaseMutex();
+        }
+
+        return 0; // Se não houver progresso guardado, começar do início
+    }
+
+    static void SaveProgress(string progressFile, int lineNumber)
+    {
+        mutex.WaitOne();
+        try
+        {
+            File.WriteAllText(progressFile, lineNumber.ToString());
+        }
+        finally
+        {
+            mutex.ReleaseMutex();
         }
     }
 
@@ -226,7 +253,6 @@ class Wavy
             }
         }
 
-        //throw new Exception("Não foi possível conectar ao agregador após várias tentativas.");
         return null;
     }
 
@@ -295,24 +321,5 @@ class Wavy
         }
 
         throw new Exception("Não foi possível receber mensagem após várias tentativas.");
-    }
-
-    static int LoadProgress()
-    {
-        if (File.Exists(PROGRESS_FILE))
-        {
-            string content = File.ReadAllText(PROGRESS_FILE);
-            if (int.TryParse(content, out int progress))
-            {
-                return progress;
-            }
-        }
-
-        return 0; // Se não houver progresso guardado, começar do início
-    }
-
-    static void SaveProgress(int lineNumber)
-    {
-        File.WriteAllText(PROGRESS_FILE, lineNumber.ToString());
     }
 }

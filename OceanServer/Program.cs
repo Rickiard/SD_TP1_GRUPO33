@@ -175,6 +175,8 @@ class TCPServer
 
     static void Main()
     {
+        DeleteDirectory("ReceivedData");
+
         // Iniciar dois servidores em threads separadas
         Thread server1 = new Thread(() => StartServer(5000));
         Thread server2 = new Thread(() => StartServer(5001));
@@ -183,5 +185,26 @@ class TCPServer
         server2.Start();
 
         Console.WriteLine("Dois servidores TCP estão em execução...");
+    }
+
+    static void DeleteDirectory(string directoryPath)
+    {
+        try
+        {
+            if (Directory.Exists(directoryPath))
+            {
+                // Apagar a pasta e todo o seu conteúdo
+                Directory.Delete(directoryPath, true);
+                Console.WriteLine($"Pasta '{directoryPath}' apagada com sucesso.");
+            }
+            else
+            {
+                Console.WriteLine($"A pasta '{directoryPath}' não existe.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao apagar a pasta '{directoryPath}': {ex.Message}");
+        }
     }
 }
