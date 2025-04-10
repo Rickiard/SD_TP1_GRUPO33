@@ -9,7 +9,7 @@ class Wavy
     const int MAX_RETRIES = 5; // Número máximo de tentativas de reconexão
     const int RETRY_DELAY_MS = 5000; // Tempo de espera entre tentativas (em milissegundos)
     const int CONNECTION_TIMEOUT_MS = 10000; // Timeout para estabelecer conexão (em milissegundos)
-    static Mutex mutex = new Mutex(); // Mutex para sincronizar acesso ao arquivo de progresso
+    static Mutex mutex = new Mutex(); // Mutex para sincronizar acesso ao ficheiro de progresso
 
     static void Main(string[] args)
     {

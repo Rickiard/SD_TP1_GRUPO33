@@ -10,7 +10,7 @@ class AgregadorManager
 {
     static Dictionary<string, List<string>> dataBuffer = new Dictionary<string, List<string>>();
     static object bufferLock = new object(); // Lock para proteger o acesso ao dataBuffer
-    static Dictionary<string, object> fileLocks = new Dictionary<string, object>(); // Locks para proteger arquivos individuais
+    static Dictionary<string, object> fileLocks = new Dictionary<string, object>(); // Locks para proteger ficheiros individuais
     static HashSet<string> activeWavys = new HashSet<string>(); // Rastrear WAVYs conectadas
 
     static void Main(string[] args)
@@ -209,7 +209,7 @@ class AgregadorManager
                 dataBuffer[wavyId].Add(data);
             }
 
-            // Obter ou criar um lock para o arquivo
+            // Obter ou criar um lock para o ficheiro
             lock (bufferLock)
             {
                 if (!fileLocks.ContainsKey(wavyId))
