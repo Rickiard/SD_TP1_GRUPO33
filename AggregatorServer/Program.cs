@@ -32,11 +32,6 @@ class AgregadorManager
 
         Console.WriteLine("[MANAGER] Todos os agregadores foram iniciados.");
         Console.ReadLine();
-
-        // Enviar dados restantes antes de encerrar
-        FlushRemainingData("Agregador_4000");
-        FlushRemainingData("Agregador_4001");
-        FlushRemainingData("Agregador_4002");
     }
 
     static void StartAgregador(string IpServer, int serverPort1, int serverPort2, int aggregatorPort)
@@ -113,6 +108,9 @@ class AgregadorManager
                         // Remover WAVY da lista de conexões ativas ao desconectar
                         if (wavyId != null)
                         {
+                            // Enviar dados restantes antes de encerrar a comunicação
+                            FlushRemainingData(aggregatorId);
+
                             // Atualizar estado para "manutenção"
                             UpdateWavyStatus(wavyId, "desativada", aggregatorId);
 
@@ -275,7 +273,13 @@ class AgregadorManager
         {
             foreach (var wavyId in dataBuffer.Keys)
             {
-                List<string> bufferCopy = new List<string>(dataBuffer[wavyId]);
+                List<string> bufferCopy;
+                lock (bufferLock)
+                {
+                    // Criar uma cópia do buffer para evitar modificações durante o envio
+                    bufferCopy = new List<string>(dataBuffer[wavyId]);
+                }
+
                 if (bufferCopy.Count > 0)
                 {
                     // Enviar os dados restantes
@@ -284,18 +288,23 @@ class AgregadorManager
 
                     if (success)
                     {
-                        // Limpar buffer e ficheiro local
-                        dataBuffer[wavyId].Clear();
+                        // Limpar buffer e ficheiro local após envio bem-sucedido
+                        lock (bufferLock)
+                        {
+                            dataBuffer[wavyId].Clear();
+                        }
+
                         string fileName = $"{aggregatorId}_WAVY_{wavyId}.csv";
                         lock (fileLocks[wavyId])
                         {
                             File.WriteAllText(fileName, string.Empty);
                         }
-                        Console.WriteLine($"[{aggregatorId}] Dados restantes enviados e buffer limpo para {wavyId}.");
+
+                        Console.WriteLine($"[{aggregatorId}] Dados restantes enviados e buffer limpo para WAVY '{wavyId}'.");
                     }
                     else
                     {
-                        Console.WriteLine($"[{aggregatorId}] Falha ao enviar dados restantes para {wavyId}. Dados mantidos no buffer.");
+                        Console.WriteLine($"[{aggregatorId}] Falha ao enviar dados restantes para WAVY '{wavyId}'. Dados mantidos no buffer.");
                     }
                 }
             }
