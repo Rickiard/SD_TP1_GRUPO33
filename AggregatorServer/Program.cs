@@ -30,7 +30,7 @@ class AgregadorManager
         Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4001));
         Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4002));
 
-        Console.WriteLine("[MANAGER] Todos os agregadores foram iniciados. Pressione ENTER para sair.");
+        Console.WriteLine("[MANAGER] Todos os agregadores foram iniciados.");
         Console.ReadLine();
 
         // Enviar dados restantes antes de encerrar
@@ -113,6 +113,9 @@ class AgregadorManager
                         // Remover WAVY da lista de conexões ativas ao desconectar
                         if (wavyId != null)
                         {
+                            // Atualizar estado para "manutenção"
+                            UpdateWavyStatus(wavyId, "desativada", aggregatorId);
+
                             lock (bufferLock)
                             {
                                 activeWavys.Remove(wavyId);
@@ -150,6 +153,8 @@ class AgregadorManager
                     return "DENIED";
                 }
 
+                UpdateWavyStatus(wavyId, "associada", aggregatorId);
+
                 activeWavys.Add(wavyId);
             }
 
@@ -176,6 +181,7 @@ class AgregadorManager
         else if (message.Equals("QUIT"))
         {
             Console.WriteLine($"[{aggregatorId}] Finalizando conexão.");
+            UpdateWavyStatus(wavyId, "desativada", aggregatorId);
             return "100 OK";
         }
         else
@@ -366,20 +372,47 @@ class AgregadorManager
 
     static void UpdateWavyStatus(string wavyId, string newStatus, string aggregatorId)
     {
-        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome único para o ficheiro de configuração
-        var lines = File.ReadAllLines(configFileName);
-        for (int i = 0; i < lines.Length; i++)
+        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome do ficheiro de configuração
+
+        try
         {
-            var parts = lines[i].Split(':');
-            if (parts[0].Trim() == wavyId && parts.Length == 4)
+            var lines = File.ReadAllLines(configFileName);
+            bool wavyFound = false;
+
+            for (int i = 0; i < lines.Length; i++)
             {
-                parts[1] = $" {newStatus}";
-                parts[3] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss");
-                lines[i] = string.Join(":", parts);
-                break;
+                var parts = lines[i].Split(':', 4);
+                if (parts.Length == 4 && parts[0].Trim() == wavyId)
+                {
+                    string oldStatus = parts[1]; // Captura o status anterior
+                    parts[1] = newStatus; // Atualiza o status
+                    parts[3] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"); // Atualiza o last_sync
+                    lines[i] = string.Join(":", parts);
+                    wavyFound = true;
+
+                    // Exibe mensagem de mudança de estado
+                    Console.WriteLine($"[{aggregatorId}] Estado da WAVY '{wavyId}' alterado de '{oldStatus}' para '{newStatus}'.");
+                    break;
+                }
             }
+
+            if (!wavyFound)
+            {
+                Console.WriteLine($"[{aggregatorId}] WAVY ID '{wavyId}' não encontrada no ficheiro de configuração.");
+                return;
+            }
+
+            // Guardar as alterações no ficheiro
+            File.WriteAllLines(configFileName, lines);
         }
-        File.WriteAllLines(configFileName, lines);
+        catch (FileNotFoundException)
+        {
+            Console.WriteLine($"[{aggregatorId}] Ficheiro de configuração '{configFileName}' não encontrado.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{aggregatorId}] Erro ao atualizar o status da WAVY '{wavyId}': {ex.Message}");
+        }
     }
 
     static int? GetVolumeToSend(string wavyId, string aggregatorId)

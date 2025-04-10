@@ -177,6 +177,9 @@ class Wavy
         }
         finally
         {
+            string quitMessage = "QUIT";
+            SendMessage(stream, quitMessage);
+            Console.WriteLine($"WAVY{id}: Mensagem 'QUIT' enviada ao agregador.");
             stream?.Close();
             client?.Close();
         }
