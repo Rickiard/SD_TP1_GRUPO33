@@ -29,7 +29,7 @@ class TCPServer
             {
                 string message = Encoding.UTF8.GetString(buffer, 0, bytesRead).Trim();
 
-                bool hasMutex = false; // Track whether the mutex has been acquired
+                bool hasMutex = false; // Acompanhar se o mutex foi adquirido
                 try
                 {
                     mutex.WaitOne();
@@ -53,7 +53,7 @@ class TCPServer
                 {
                     if (hasMutex)
                     {
-                        mutex.ReleaseMutex(); // Release the mutex only if it was acquired
+                        mutex.ReleaseMutex(); // Soltar mutex apenas se já foi adquirido
                     }
                 }
             }
