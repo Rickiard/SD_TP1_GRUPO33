@@ -2,7 +2,7 @@
   "profiles": {
     "WavyClient": {
       "commandName": "Project",
-      "commandLineArgs": "26.63.92.110 4000 4001 4002"
+      "commandLineArgs": "192.168.123.192 4000 4001 4002"
     },
     "WSL": {
       "commandName": "WSL2",

@@ -15,6 +15,9 @@ class AgregadorManager
 
     static void Main(string[] args)
     {
+
+        DatabaseInitializer.InitializeDatabases();//incializar database
+
         if (args.Length != 3)
         {
             Console.WriteLine("Uso correto: AgregadorManager <IP_SERVIDOR> <PORTA_SERVIDOR_1> <PORTA_SERVIDOR_2>");
