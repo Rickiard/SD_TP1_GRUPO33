@@ -97,6 +97,7 @@ class TCPServer
 
             File.AppendAllText(filePath, csvData + "\n");
             Console.WriteLine($"Dados agregados armazenados em {filePath}");
+            DatabaseHelper.GuardarDadoCSV(parts[1], csvData);
 
             // Limpar linhas em branco do ficheiro CSV
             CleanEmptyLinesFromCSV(filePath);
@@ -175,6 +176,17 @@ class TCPServer
 
     static void Main()
     {
+        Console.WriteLine("Inicializando base de dados...");
+        try
+        {
+            DatabaseInitializer.InitializeDatabases();
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao criar base de dados: {ex.Message}");
+        }
+
         DeleteDirectory("ReceivedData");
 
         // Iniciar dois servidores em threads separadas

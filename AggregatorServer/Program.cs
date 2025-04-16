@@ -16,7 +16,7 @@ class AgregadorManager
     static void Main(string[] args)
     {
 
-        DatabaseInitializer.InitializeDatabases();//incializar database
+
 
         if (args.Length != 3)
         {
@@ -258,11 +258,6 @@ class AgregadorManager
                         lock (fileLocks[wavyId])
                         {
                             File.WriteAllText(fileName, string.Empty);
-                        }
-
-                        foreach (string linha in bufferCopy)
-                        {
-                            DatabaseHelper.GuardarDadoCSV(wavyId, linha);
                         }
 
                         Console.WriteLine($"[{aggregatorId}] Dados agregados enviados e buffer limpo para {wavyId}.");
