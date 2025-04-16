@@ -99,6 +99,8 @@ class TCPServer
             Console.WriteLine($"Dados agregados armazenados em {filePath}");
             DatabaseHelper.GuardarDadoCSV(parts[1], csvData);
 
+            DatabaseHelper.GuardarDadoCSV(parts[1], csvData);
+
             // Limpar linhas em branco do ficheiro CSV
             CleanEmptyLinesFromCSV(filePath);
         }
