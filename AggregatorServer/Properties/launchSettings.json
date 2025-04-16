@@ -2,7 +2,7 @@
   "profiles": {
     "AggregatorServer": {
       "commandName": "Project",
-      "commandLineArgs": "192.168.123.192 5000 5001"
+      "commandLineArgs": "192.168.1.89 5000 5001"
     },
     "WSL": {
       "commandName": "WSL2",

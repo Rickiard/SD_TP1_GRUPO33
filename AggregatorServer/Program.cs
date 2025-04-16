@@ -16,7 +16,16 @@ class AgregadorManager
     static void Main(string[] args)
     {
 
+        Console.WriteLine("Inicializando base de dados...");
+        try
+        {
+            DatabaseInitializer.InitializeDatabase();
 
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao criar base de dados: {ex.Message}");
+        }
 
         if (args.Length != 3)
         {
