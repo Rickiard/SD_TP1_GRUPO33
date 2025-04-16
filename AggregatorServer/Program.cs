@@ -259,6 +259,12 @@ class AgregadorManager
                         {
                             File.WriteAllText(fileName, string.Empty);
                         }
+
+                        foreach (string linha in bufferCopy)
+                        {
+                            DatabaseHelper.GuardarDadoCSV(wavyId, linha);
+                        }
+
                         Console.WriteLine($"[{aggregatorId}] Dados agregados enviados e buffer limpo para {wavyId}.");
                     }
                 }
