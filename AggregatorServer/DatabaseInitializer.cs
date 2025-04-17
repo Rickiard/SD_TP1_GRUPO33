@@ -34,19 +34,22 @@ class DatabaseInitializer
             {
                 connection.Open();
 
+                // Tabela wavy_config
                 string createWavyConfigTable = @"
                     CREATE TABLE IF NOT EXISTS wavy_config (
                         wavy_id TEXT PRIMARY KEY,
                         status TEXT,
-                        ip TEXT,
+                        sensores TEXT,
                         last_sync TEXT
                     );";
 
+                // Tabela preprocessing_config
                 string createPreprocessingTable = @"
                     CREATE TABLE IF NOT EXISTS preprocessing_config (
                         wavy_id TEXT PRIMARY KEY,
-                        aggregator_id TEXT,
-                        volume INTEGER
+                        pré_processamento TEXT,
+                        volume INTEGER,
+                        servidor_associado TEXT
                     );";
 
                 using (var command = new SQLiteCommand(createWavyConfigTable, connection))

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data.SQLite;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -9,18 +10,16 @@ using System.Threading.Tasks;
 class AgregadorManager
 {
     static Dictionary<string, List<string>> dataBuffer = new Dictionary<string, List<string>>();
-    static object bufferLock = new object(); // Lock para proteger o acesso ao dataBuffer
-    static Dictionary<string, object> fileLocks = new Dictionary<string, object>(); // Locks para proteger ficheiros individuais
-    static HashSet<string> activeWavys = new HashSet<string>(); // Rastrear WAVYs conectadas
+    static object bufferLock = new object();
+    static Dictionary<string, object> fileLocks = new Dictionary<string, object>();
+    static HashSet<string> activeWavys = new HashSet<string>();
 
     static void Main(string[] args)
     {
-
         Console.WriteLine("Inicializando base de dados...");
         try
         {
             DatabaseInitializer.InitializeDatabase();
-
         }
         catch (Exception ex)
         {
@@ -33,11 +32,10 @@ class AgregadorManager
             return;
         }
 
-        string IpServer = args[0]; // IP do servidor
-        int serverPort1 = Convert.ToInt32(args[1]); // Porta do servidor 1 (ex.: 5000)
-        int serverPort2 = Convert.ToInt32(args[2]); // Porta do servidor 2 (ex.: 5001)
+        string IpServer = args[0];
+        int serverPort1 = Convert.ToInt32(args[1]);
+        int serverPort2 = Convert.ToInt32(args[2]);
 
-        // Iniciar 3 agregadores nas portas 4000, 4001 e 4002
         Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4000));
         Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4001));
         Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4002));
@@ -50,90 +48,23 @@ class AgregadorManager
     {
         try
         {
-            string aggregatorId = $"Agregador_{aggregatorPort}";
-            string ipAgregador = GetLocalIPAddress();
-
-            // Conectar ao servidor menos ocupado
+            string aggregatorId = GetLocalIPAddress();
             int selectedServerPort = SelectLeastBusyServer(IpServer, serverPort1, serverPort2);
             TcpClient serverClient = new TcpClient(IpServer, selectedServerPort);
             NetworkStream serverStream = serverClient.GetStream();
             Console.WriteLine($"[{aggregatorId}] Conectado ao SERVIDOR na porta {selectedServerPort}!");
 
-            // Iniciar listener para WAVYs
-            IPAddress ipAddress = IPAddress.Parse(ipAgregador);
+            IPAddress ipAddress = IPAddress.Parse(aggregatorId);
             TcpListener listener = new TcpListener(ipAddress, aggregatorPort);
             listener.Start();
-            Console.WriteLine($"[{aggregatorId}] Aguardando conexões em {ipAgregador} na porta {aggregatorPort}...");
+            Console.WriteLine($"[{aggregatorId}] Aguardando conexões em {aggregatorId}:{aggregatorPort}...");
 
             while (true)
             {
                 TcpClient client = listener.AcceptTcpClient();
                 Console.WriteLine($"[{aggregatorId}] Cliente WAVY conectado!");
 
-                // Gerir a comunicação com o cliente de forma contínua
-                Task.Run(() =>
-                {
-                    string wavyId = null; // Identificador da WAVY conectado
-                    try
-                    {
-                        using (client)
-                        using (NetworkStream stream = client.GetStream())
-                        {
-                            byte[] buffer = new byte[1024];
-                            while (true)
-                            {
-                                int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                                if (bytesRead == 0)
-                                {
-                                    // Cliente fechou a conexão
-                                    Console.WriteLine($"[{aggregatorId}] Cliente WAVY desconectado.");
-                                    break;
-                                }
-
-                                string receivedMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                                Console.WriteLine($"[{aggregatorId}] Mensagem recebida: {receivedMessage}");
-                                string response = ProcessMessage(receivedMessage, aggregatorId, ref wavyId);
-
-                                if (response == "DENIED")
-                                {
-                                    Console.WriteLine($"[{aggregatorId}] Conexão rejeitada para WAVY ID: {wavyId}");
-                                    break;
-                                }
-
-                                byte[] responseData = Encoding.UTF8.GetBytes(response);
-                                stream.Write(responseData, 0, responseData.Length);
-                                Console.WriteLine($"[{aggregatorId}] Resposta enviada: {response}");
-
-                                if (receivedMessage.StartsWith("DATA_CSV"))
-                                {
-                                    SaveWavyDataToFile(receivedMessage, aggregatorId);
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[{aggregatorId}] Erro: {ex.Message}");
-                    }
-                    finally
-                    {
-                        // Remover WAVY da lista de conexões ativas ao desconectar
-                        if (wavyId != null)
-                        {
-                            // Enviar dados restantes antes de encerrar a comunicação
-                            FlushRemainingData(aggregatorId);
-
-                            // Atualizar estado para "manutenção"
-                            UpdateWavyStatus(wavyId, "desativada", aggregatorId);
-
-                            lock (bufferLock)
-                            {
-                                activeWavys.Remove(wavyId);
-                            }
-                            Console.WriteLine($"[{aggregatorId}] WAVY ID {wavyId} removido das conexões ativas.");
-                        }
-                    }
-                });
+                Task.Run(() => HandleClient(client, aggregatorId));
             }
         }
         catch (Exception ex)
@@ -142,141 +73,174 @@ class AgregadorManager
         }
     }
 
-    static string ProcessMessage(string message, string aggregatorId, ref string wavyId)
+    static void HandleClient(TcpClient client, string aggregatorId)
     {
-        if (message.StartsWith("HELLO:"))
-        {
-            wavyId = message.Split(':')[1].Trim();
-            Console.WriteLine($"[{aggregatorId}] WAVY ID recebido: {wavyId}");
-
-            lock (bufferLock)
-            {
-                if (activeWavys.Contains(wavyId))
-                {
-                    Console.WriteLine($"[{aggregatorId}] WAVY ID {wavyId} já está conectado.");
-                    return "DENIED";
-                }
-
-                if (!IsWavyConfigured(wavyId, aggregatorId))
-                {
-                    Console.WriteLine($"[{aggregatorId}] WAVY ID {wavyId} não está configurada.");
-                    return "DENIED";
-                }
-
-                UpdateWavyStatus(wavyId, "associada", aggregatorId);
-
-                activeWavys.Add(wavyId);
-            }
-
-            UpdateWavyStatus(wavyId, "operação", aggregatorId);
-            return $"ACK:{GetLocalIPAddress()}";
-        }
-        else if (message.StartsWith("STATUS_REQUEST:"))
-        {
-            string requestedWavyId = message.Split(':')[1].Trim();
-            Console.WriteLine($"[{aggregatorId}] Requisição de status para WAVY ID: {requestedWavyId}");
-            string status = GetWavyStatus(requestedWavyId, aggregatorId);
-            if (status == null)
-            {
-                Console.WriteLine($"[{aggregatorId}] WAVY ID {requestedWavyId} não está configurada.");
-                return "DENIED";
-            }
-            return $"CURRENT_STATUS:{requestedWavyId}:{status}";
-        }
-        else if (message.StartsWith("DATA_CSV:"))
-        {
-            Console.WriteLine($"[{aggregatorId}] Dados CSV recebidos.");
-            return "ACK";
-        }
-        else if (message.Equals("QUIT"))
-        {
-            Console.WriteLine($"[{aggregatorId}] Finalizando conexão.");
-            UpdateWavyStatus(wavyId, "desativada", aggregatorId);
-            return "100 OK";
-        }
-        else
-        {
-            Console.WriteLine($"[{aggregatorId}] Mensagem desconhecida recebida.");
-            return "DENIED";
-        }
-    }
-
-    static void SaveWavyDataToFile(string message, string aggregatorId)
-    {
+        string wavyId = null;
         try
         {
-            string[] parts = message.Split(':');
-            if (parts.Length < 3 || !parts[0].Equals("DATA_CSV"))
+            using (client)
+            using (NetworkStream stream = client.GetStream())
             {
-                Console.WriteLine($"[{aggregatorId}] Formato de mensagem inválido para salvar dados.");
-                return;
-            }
-
-            string wavyId = parts[1].Trim();
-            string data = string.Join(":", parts.Skip(2));
-
-            // Adicionar dados ao buffer com proteção
-            lock (bufferLock)
-            {
-                if (!dataBuffer.ContainsKey(wavyId))
+                byte[] buffer = new byte[1024];
+                while (true)
                 {
-                    dataBuffer[wavyId] = new List<string>();
-                }
-                dataBuffer[wavyId].Add(data);
-            }
+                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                    if (bytesRead == 0) break;
 
-            // Obter ou criar um lock para o ficheiro
-            lock (bufferLock)
-            {
-                if (!fileLocks.ContainsKey(wavyId))
-                {
-                    fileLocks[wavyId] = new object();
-                }
-            }
+                    string receivedMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                    Console.WriteLine($"[{aggregatorId}] Mensagem recebida: {receivedMessage}");
+                    string response = ProcessMessage(receivedMessage, aggregatorId, ref wavyId);
 
-            // Persistir no ficheiro local como backup
-            string fileName = $"{aggregatorId}_WAVY_{wavyId}.csv";
-            lock (fileLocks[wavyId])
-            {
-                File.AppendAllText(fileName, data + Environment.NewLine);
-            }
+                    if (response == "DENIED") break;
 
-            // Verificar se o limite foi atingido
-            int? volumeToSend = GetVolumeToSend(wavyId, aggregatorId);
-            if (volumeToSend.HasValue)
-            {
-                List<string> bufferCopy;
-                lock (bufferLock)
-                {
-                    bufferCopy = new List<string>(dataBuffer[wavyId]);
-                }
+                    byte[] responseData = Encoding.UTF8.GetBytes(response);
+                    stream.Write(responseData, 0, responseData.Length);
+                    Console.WriteLine($"[{aggregatorId}] Resposta enviada: {response}");
 
-                if (bufferCopy.Count >= volumeToSend.Value)
-                {
-                    // Enviar dados acumulados ao OceanServer
-                    string aggregatedData = string.Join(Environment.NewLine, bufferCopy);
-                    bool success = SendMessageToServer($"DATA_CSV:{wavyId}:{aggregatedData}", aggregatorId);
-
-                    if (success)
-                    {
-                        // Limpar buffer e ficheiro local após envio bem-sucedido
-                        lock (bufferLock)
-                        {
-                            dataBuffer[wavyId].Clear();
-                        }
-                        lock (fileLocks[wavyId])
-                        {
-                            File.WriteAllText(fileName, string.Empty);
-                        }
-
-                        Console.WriteLine($"[{aggregatorId}] Dados agregados enviados e buffer limpo para {wavyId}.");
-                    }
+                    if (receivedMessage.StartsWith("DATA_CSV"))
+                        SaveWavyDataToFile(receivedMessage, aggregatorId);
                 }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[{aggregatorId}] Erro ao guardar ou enviar dados: {ex.Message}");
+            Console.WriteLine($"[{aggregatorId}] Erro: {ex.Message}");
+        }
+        finally
+        {
+            if (wavyId != null)
+            {
+                FlushRemainingData(aggregatorId);
+                UpdateWavyStatus(wavyId, "desativada");
+                lock (bufferLock) activeWavys.Remove(wavyId);
+            }
+        }
+    }
+
+    static string ProcessMessage(string message, string aggregatorId, ref string wavyId)
+    {
+        if (message.StartsWith("HELLO:"))
+        {
+            wavyId = message.Split(':')[1].Trim();
+            if (activeWavys.Contains(wavyId) || !IsWavyConfigured(wavyId)) return "DENIED";
+            UpdateWavyStatus(wavyId, "operação");
+            DatabaseHelper.AtualizarLastSync(wavyId);
+            activeWavys.Add(wavyId);
+            return $"ACK:{GetLocalIPAddress()}";
+        }
+        else if (message.StartsWith("STATUS_REQUEST:"))
+        {
+            string requestedWavyId = message.Split(':')[1].Trim();
+            string status = GetWavyStatus(requestedWavyId);
+            return status != null ? $"CURRENT_STATUS:{requestedWavyId}:{status}" : "DENIED";
+        }
+        else if (message.StartsWith("DATA_CSV:"))
+        {
+            DatabaseHelper.AtualizarLastSync(wavyId);
+            return "ACK";
+        }
+        else if (message == "QUIT")
+        {
+            UpdateWavyStatus(wavyId, "desativada");
+            return "100 OK";
+        }
+        return "DENIED";
+    }
+
+    static void UpdateWavyStatus(string wavyId, string newStatus)
+    {
+        using (var conn = new SQLiteConnection("Data Source=config_agregador.db;Version=3;"))
+        {
+            conn.Open();
+            var cmd = new SQLiteCommand("UPDATE wavy_config SET status = @status, last_sync = @sync WHERE wavy_id = @id", conn);
+            cmd.Parameters.AddWithValue("@status", newStatus);
+            cmd.Parameters.AddWithValue("@sync", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss"));
+            cmd.Parameters.AddWithValue("@id", wavyId);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    static bool IsWavyConfigured(string wavyId)
+    {
+        using (var conn = new SQLiteConnection("Data Source=config_agregador.db;Version=3;"))
+        {
+            conn.Open();
+            var cmd = new SQLiteCommand("SELECT COUNT(*) FROM wavy_config WHERE wavy_id = @id", conn);
+            cmd.Parameters.AddWithValue("@id", wavyId);
+            return (long)cmd.ExecuteScalar() > 0;
+        }
+    }
+
+    static string GetWavyStatus(string wavyId)
+    {
+        using (var conn = new SQLiteConnection("Data Source=config_agregador.db;Version=3;"))
+        {
+            conn.Open();
+            var cmd = new SQLiteCommand("SELECT status FROM wavy_config WHERE wavy_id = @id", conn);
+            cmd.Parameters.AddWithValue("@id", wavyId);
+            var result = cmd.ExecuteScalar();
+            return result?.ToString();
+        }
+    }
+
+    static int? GetVolumeToSend(string wavyId)
+    {
+        using (var conn = new SQLiteConnection("Data Source=config_agregador.db;Version=3;"))
+        {
+            conn.Open();
+            var cmd = new SQLiteCommand("SELECT volume FROM preprocessing_config WHERE wavy_id = @id", conn);
+            cmd.Parameters.AddWithValue("@id", wavyId);
+            var result = cmd.ExecuteScalar();
+            return result != null && int.TryParse(result.ToString(), out int vol) ? vol : null;
+        }
+    }
+
+    static void SaveWavyDataToFile(string message, string aggregatorId)
+    {
+        string[] parts = message.Split(':');
+        if (parts.Length < 3 || !parts[0].Equals("DATA_CSV")) return;
+
+        string wavyId = parts[1].Trim();
+        string data = string.Join(":", parts, 2, parts.Length - 2);
+
+        lock (bufferLock)
+        {
+            if (!dataBuffer.ContainsKey(wavyId)) dataBuffer[wavyId] = new List<string>();
+            dataBuffer[wavyId].Add(data);
+        }
+
+        lock (bufferLock)
+        {
+            if (!fileLocks.ContainsKey(wavyId)) fileLocks[wavyId] = new object();
+        }
+
+        string fileName = $"{aggregatorId}_WAVY_{wavyId}.csv";
+        lock (fileLocks[wavyId])
+        {
+            File.AppendAllText(fileName, data + Environment.NewLine);
+        }
+
+        int? volumeToSend = GetVolumeToSend(wavyId);
+        if (volumeToSend.HasValue)
+        {
+            List<string> bufferCopy;
+            lock (bufferLock)
+            {
+                bufferCopy = new List<string>(dataBuffer[wavyId]);
+            }
+
+            if (bufferCopy.Count >= volumeToSend.Value)
+            {
+                string aggregatedData = string.Join(Environment.NewLine, bufferCopy);
+                bool success = SendMessageToServer($"DATA_CSV:{wavyId}:{aggregatedData}", aggregatorId);
+
+                if (success)
+                {
+                    lock (bufferLock) dataBuffer[wavyId].Clear();
+                    lock (fileLocks[wavyId]) File.WriteAllText(fileName, string.Empty);
+                    Console.WriteLine($"[{aggregatorId}] Dados agregados enviados e buffer limpo para {wavyId}.");
+                }
+            }
         }
     }
 
@@ -286,190 +250,39 @@ class AgregadorManager
         {
             foreach (var wavyId in dataBuffer.Keys)
             {
-                List<string> bufferCopy;
-                lock (bufferLock)
-                {
-                    // Criar uma cópia do buffer para evitar modificações durante o envio
-                    bufferCopy = new List<string>(dataBuffer[wavyId]);
-                }
-
+                List<string> bufferCopy = new List<string>(dataBuffer[wavyId]);
                 if (bufferCopy.Count > 0)
                 {
-                    // Enviar os dados restantes
                     string aggregatedData = string.Join(Environment.NewLine, bufferCopy);
                     bool success = SendMessageToServer($"DATA_CSV:{wavyId}:{aggregatedData}", aggregatorId);
 
                     if (success)
                     {
-                        // Limpar buffer e ficheiro local após envio bem-sucedido
-                        lock (bufferLock)
-                        {
-                            dataBuffer[wavyId].Clear();
-                        }
-
+                        dataBuffer[wavyId].Clear();
                         string fileName = $"{aggregatorId}_WAVY_{wavyId}.csv";
-                        lock (fileLocks[wavyId])
-                        {
-                            File.WriteAllText(fileName, string.Empty);
-                        }
-
+                        lock (fileLocks[wavyId]) File.WriteAllText(fileName, string.Empty);
                         Console.WriteLine($"[{aggregatorId}] Dados restantes enviados e buffer limpo para WAVY '{wavyId}'.");
                     }
-                    else
-                    {
-                        Console.WriteLine($"[{aggregatorId}] Falha ao enviar dados restantes para WAVY '{wavyId}'. Dados mantidos no buffer.");
-                    }
                 }
             }
         }
-    }
-
-    static int SelectLeastBusyServer(string IpServer, int port1, int port2)
-    {
-        try
-        {
-            int queueLength1 = GetServerQueueLength(IpServer, port1);
-            int queueLength2 = GetServerQueueLength(IpServer, port2);
-
-            return queueLength1 <= queueLength2 ? port1 : port2;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro ao verificar fila dos servidores: {ex.Message}");
-            return port1; // Retorna o primeiro servidor como fallback
-        }
-    }
-
-    static int GetServerQueueLength(string IpServer, int port)
-    {
-        try
-        {
-            using (TcpClient tempClient = new TcpClient(IpServer, port))
-            using (NetworkStream tempStream = tempClient.GetStream())
-            {
-                byte[] request = Encoding.UTF8.GetBytes("QUEUE_LENGTH");
-                tempStream.Write(request, 0, request.Length);
-
-                byte[] buffer = new byte[1024];
-                int bytesRead = tempStream.Read(buffer, 0, buffer.Length);
-                string response = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-
-                if (int.TryParse(response, out int queueLength))
-                {
-                    return queueLength;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro ao verificar fila do servidor na porta {port}: {ex.Message}");
-        }
-
-        return int.MaxValue; // Retorna um valor alto se falhar
-    }
-
-    static bool IsWavyConfigured(string wavyId, string aggregatorId)
-    {
-        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome único para o ficheiro de configuração
-        foreach (var line in File.ReadAllLines(configFileName))
-        {
-            var parts = line.Split(':');
-            if (parts[0].Trim() == wavyId)
-                return true;
-        }
-        return false;
-    }
-
-    static string GetWavyStatus(string wavyId, string aggregatorId)
-    {
-        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome único para o ficheiro de configuração
-        foreach (var line in File.ReadAllLines(configFileName))
-        {
-            var parts = line.Split(':');
-            if (parts[0].Trim() == wavyId && parts.Length >= 2)
-                return parts[1].Trim();
-        }
-        return null;
-    }
-
-    static void UpdateWavyStatus(string wavyId, string newStatus, string aggregatorId)
-    {
-        string configFileName = $"{aggregatorId}_wavy_config.txt"; // Nome do ficheiro de configuração
-
-        try
-        {
-            var lines = File.ReadAllLines(configFileName);
-            bool wavyFound = false;
-
-            for (int i = 0; i < lines.Length; i++)
-            {
-                var parts = lines[i].Split(':', 4);
-                if (parts.Length == 4 && parts[0].Trim() == wavyId)
-                {
-                    string oldStatus = parts[1]; // Captura o status anterior
-                    parts[1] = newStatus; // Atualiza o status
-                    parts[3] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"); // Atualiza o last_sync
-                    lines[i] = string.Join(":", parts);
-                    wavyFound = true;
-
-                    // Exibe mensagem de mudança de estado
-                    Console.WriteLine($"[{aggregatorId}] Estado da WAVY '{wavyId}' alterado de '{oldStatus}' para '{newStatus}'.");
-                    break;
-                }
-            }
-
-            if (!wavyFound)
-            {
-                Console.WriteLine($"[{aggregatorId}] WAVY ID '{wavyId}' não encontrada no ficheiro de configuração.");
-                return;
-            }
-
-            // Guardar as alterações no ficheiro
-            File.WriteAllLines(configFileName, lines);
-        }
-        catch (FileNotFoundException)
-        {
-            Console.WriteLine($"[{aggregatorId}] Ficheiro de configuração '{configFileName}' não encontrado.");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[{aggregatorId}] Erro ao atualizar o status da WAVY '{wavyId}': {ex.Message}");
-        }
-    }
-
-    static int? GetVolumeToSend(string wavyId, string aggregatorId)
-    {
-        string preprocessingFileName = $"{aggregatorId}_preprocessing_config.txt"; // Nome único para o ficheiro de pré-processamento
-        foreach (var line in File.ReadAllLines(preprocessingFileName))
-        {
-            var parts = line.Split(':');
-            if (parts[0].Trim() == wavyId && parts.Length >= 3)
-            {
-                if (int.TryParse(parts[2], out int volume))
-                    return volume;
-            }
-        }
-        return null;
     }
 
     static bool SendMessageToServer(string message, string aggregatorId)
     {
         try
         {
-            string IpServer = "127.0.0.1"; 
-            int PORT = 5000; 
+            string IpServer = "127.0.0.1";
+            int PORT = 5000;
             using (TcpClient serverClient = new TcpClient(IpServer, PORT))
             using (NetworkStream serverStream = serverClient.GetStream())
             {
                 byte[] data = Encoding.UTF8.GetBytes(message);
                 serverStream.Write(data, 0, data.Length);
-                Console.WriteLine($"[{aggregatorId}] Mensagem encaminhada ao SERVIDOR.");
                 byte[] buffer = new byte[1024];
                 int bytesRead = serverStream.Read(buffer, 0, buffer.Length);
                 string serverResponse = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                Console.WriteLine($"[{aggregatorId}] Resposta do SERVIDOR: {serverResponse}");
-
-                return serverResponse.StartsWith("100 OK"); // Sucesso se o servidor retornar "100 OK"
+                return serverResponse.StartsWith("100 OK");
             }
         }
         catch (Exception ex)
@@ -496,5 +309,44 @@ class AgregadorManager
             throw new Exception("Nenhum endereço IPv4 encontrado na máquina.");
         }
         return localIP;
+    }
+
+    static int SelectLeastBusyServer(string IpServer, int port1, int port2)
+    {
+        try
+        {
+            int queueLength1 = GetServerQueueLength(IpServer, port1);
+            int queueLength2 = GetServerQueueLength(IpServer, port2);
+            return queueLength1 <= queueLength2 ? port1 : port2;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao verificar fila dos servidores: {ex.Message}");
+            return port1;
+        }
+    }
+
+    static int GetServerQueueLength(string IpServer, int port)
+    {
+        try
+        {
+            using (TcpClient tempClient = new TcpClient(IpServer, port))
+            using (NetworkStream tempStream = tempClient.GetStream())
+            {
+                byte[] request = Encoding.UTF8.GetBytes("QUEUE_LENGTH");
+                tempStream.Write(request, 0, request.Length);
+
+                byte[] buffer = new byte[1024];
+                int bytesRead = tempStream.Read(buffer, 0, buffer.Length);
+                string response = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+
+                return int.TryParse(response, out int queueLength) ? queueLength : int.MaxValue;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao verificar fila do servidor na porta {port}: {ex.Message}");
+            return int.MaxValue;
+        }
     }
 }
