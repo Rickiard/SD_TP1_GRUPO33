@@ -70,7 +70,7 @@ class AgregadorManager
                 TcpClient client = listener.AcceptTcpClient();
                 Console.WriteLine($"[{aggregatorId}] Cliente WAVY conectado!");
 
-                Task.Run(() => HandleClient(client, aggregatorId, grpcClient));
+                Task.Run(async () => await HandleClient(client, aggregatorId, grpcClient));
             }
         }
         catch (Exception ex)
@@ -79,7 +79,7 @@ class AgregadorManager
         }
     }
 
-    static void HandleClient(TcpClient client, string aggregatorId, PreprocessingService.PreprocessingServiceClient grpcClient)
+    static async Task HandleClient(TcpClient client, string aggregatorId, PreprocessingService.PreprocessingServiceClient grpcClient)
     {
         string wavyId = null;
         try
@@ -112,7 +112,7 @@ class AgregadorManager
                     }
 
                     if (receivedMessage.StartsWith("DATA_CSV"))
-                        SaveWavyDataToFile(receivedMessage, aggregatorId, grpcClient).Wait();
+                        await SaveWavyDataToFile(receivedMessage, aggregatorId, grpcClient);
                 }
             }
         }
