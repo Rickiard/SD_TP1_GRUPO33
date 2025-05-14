@@ -38,8 +38,8 @@ class AgregadorManager
         int serverPort1 = Convert.ToInt32(args[1]);
         int serverPort2 = Convert.ToInt32(args[2]);
 
-        // Criar canal gRPC para o OceanServer (reutilizável)
-        var grpcChannel = GrpcChannel.ForAddress("http://localhost:7000");
+        // Criar canal gRPC para o PreprocessingServer (reutilizável)
+        var grpcChannel = GrpcChannel.ForAddress("http://localhost:7010"); // Porta do PreprocessingServer
         var grpcClient = new PreprocessingService.PreprocessingServiceClient(grpcChannel);
 
         Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4000, grpcClient));

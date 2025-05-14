@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option csharp_namespace = "AnalysisServer.Protos";
+
+package analysis;
+
+service AnalysisService {
+  rpc AnalyzeData (AnalysisRequest) returns (AnalysisResponse);
+}
+
+message AnalysisRequest {
+  string wavy_id = 1;
+  string processed_data = 2;
+}
+
+message AnalysisResponse {
+  string wavy_id = 1;
+  string analysis_result = 2;
+  bool success = 3;
+  string message = 4;
+} 
