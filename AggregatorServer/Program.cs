@@ -6,6 +6,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
+using Grpc.Net.Client;
+using Preprocessing;
 
 class AgregadorManager
 {
@@ -36,15 +38,19 @@ class AgregadorManager
         int serverPort1 = Convert.ToInt32(args[1]);
         int serverPort2 = Convert.ToInt32(args[2]);
 
-        Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4000));
-        Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4001));
-        Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4002));
+        // Criar canal gRPC para o OceanServer (reutilizável)
+        var grpcChannel = GrpcChannel.ForAddress("http://localhost:7000");
+        var grpcClient = new PreprocessingService.PreprocessingServiceClient(grpcChannel);
+
+        Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4000, grpcClient));
+        Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4001, grpcClient));
+        Task.Run(() => StartAgregador(IpServer, serverPort1, serverPort2, 4002, grpcClient));
 
         Console.WriteLine("[MANAGER] Todos os agregadores foram iniciados.");
         Console.ReadLine();
     }
 
-    static void StartAgregador(string IpServer, int serverPort1, int serverPort2, int aggregatorPort)
+    static void StartAgregador(string IpServer, int serverPort1, int serverPort2, int aggregatorPort, PreprocessingService.PreprocessingServiceClient grpcClient)
     {
         try
         {
@@ -64,7 +70,7 @@ class AgregadorManager
                 TcpClient client = listener.AcceptTcpClient();
                 Console.WriteLine($"[{aggregatorId}] Cliente WAVY conectado!");
 
-                Task.Run(() => HandleClient(client, aggregatorId));
+                Task.Run(() => HandleClient(client, aggregatorId, grpcClient));
             }
         }
         catch (Exception ex)
@@ -73,7 +79,7 @@ class AgregadorManager
         }
     }
 
-    static void HandleClient(TcpClient client, string aggregatorId)
+    static void HandleClient(TcpClient client, string aggregatorId, PreprocessingService.PreprocessingServiceClient grpcClient)
     {
         string wavyId = null;
         try
@@ -85,20 +91,28 @@ class AgregadorManager
                 while (true)
                 {
                     int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                    if (bytesRead == 0) break;
+                    if (bytesRead == 0)
+                    {
+                        Console.WriteLine($"[{aggregatorId}] Conexão fechada pelo cliente.");
+                        break;
+                    }
 
                     string receivedMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
                     Console.WriteLine($"[{aggregatorId}] Mensagem recebida: {receivedMessage}");
                     string response = ProcessMessage(receivedMessage, aggregatorId, ref wavyId);
 
-                    if (response == "DENIED") break;
-
                     byte[] responseData = Encoding.UTF8.GetBytes(response);
                     stream.Write(responseData, 0, responseData.Length);
                     Console.WriteLine($"[{aggregatorId}] Resposta enviada: {response}");
 
+                    if (response == "DENIED" || receivedMessage == "QUIT")
+                    {
+                        Console.WriteLine($"[{aggregatorId}] Encerrando conexão com o cliente (motivo: {response}).");
+                        break;
+                    }
+
                     if (receivedMessage.StartsWith("DATA_CSV"))
-                        SaveWavyDataToFile(receivedMessage, aggregatorId);
+                        SaveWavyDataToFile(receivedMessage, aggregatorId, grpcClient).Wait();
                 }
             }
         }
@@ -195,7 +209,7 @@ class AgregadorManager
         }
     }
 
-    static void SaveWavyDataToFile(string message, string aggregatorId)
+    static async Task SaveWavyDataToFile(string message, string aggregatorId, PreprocessingService.PreprocessingServiceClient grpcClient)
     {
         string[] parts = message.Split(':');
         if (parts.Length < 3 || !parts[0].Equals("DATA_CSV")) return;
@@ -232,13 +246,43 @@ class AgregadorManager
             if (bufferCopy.Count >= volumeToSend.Value)
             {
                 string aggregatedData = string.Join(Environment.NewLine, bufferCopy);
-                bool success = SendMessageToServer($"DATA_CSV:{wavyId}:{aggregatedData}", aggregatorId);
 
-                if (success)
+                // Chamada gRPC para pré-processamento
+                string processedData = aggregatedData;
+                bool grpcSuccess = false;
+                string grpcMsg = "";
+                try
                 {
-                    lock (bufferLock) dataBuffer[wavyId].Clear();
-                    lock (fileLocks[wavyId]) File.WriteAllText(fileName, string.Empty);
-                    Console.WriteLine($"[{aggregatorId}] Dados agregados enviados e buffer limpo para {wavyId}.");
+                    var reply = await grpcClient.PreprocessDataAsync(new PreprocessRequest { WavyId = wavyId, RawData = aggregatedData });
+                    if (reply.Success)
+                    {
+                        processedData = reply.ProcessedData;
+                        grpcSuccess = true;
+                    }
+                    grpcMsg = reply.Message;
+                }
+                catch (Exception ex)
+                {
+                    grpcMsg = $"Erro gRPC: {ex.Message}";
+                }
+
+                if (grpcSuccess)
+                {
+                    bool success = SendMessageToServer($"DATA_CSV:{wavyId}:{processedData}", aggregatorId);
+                    if (success)
+                    {
+                        lock (bufferLock) dataBuffer[wavyId].Clear();
+                        lock (fileLocks[wavyId]) File.WriteAllText(fileName, string.Empty);
+                        Console.WriteLine($"[{aggregatorId}] Dados agregados PRÉ-PROCESSADOS enviados e buffer limpo para {wavyId}. Mensagem gRPC: {grpcMsg}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[{aggregatorId}] Falha ao enviar dados processados ao OceanServer.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"[{aggregatorId}] Falha no pré-processamento gRPC. Mensagem: {grpcMsg}");
                 }
             }
         }

@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+option csharp_namespace = "Preprocessing";
+
+service PreprocessingService {
+  rpc PreprocessData (PreprocessRequest) returns (PreprocessResponse);
+}
+
+message PreprocessRequest {
+  string wavy_id = 1;
+  string raw_data = 2;
+}
+
+message PreprocessResponse {
+  string wavy_id = 1;
+  string processed_data = 2;
+  bool success = 3;
+  string message = 4;
+} 

@@ -1,7 +1,10 @@
 {
   "profiles": {
     "OceanServer": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "environmentVariables": {
+        "ASPNETCORE_URLS": "http://localhost:7000"
+      }
     },
     "WSL": {
       "commandName": "WSL2",
