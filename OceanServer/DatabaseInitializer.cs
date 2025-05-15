@@ -2,55 +2,38 @@
 using System.Data.SQLite;
 using System.IO;
 
-class DatabaseInitializer
+public static class DatabaseInitializer
 {
     public static void InitializeDatabase()
     {
-        try
-        {
-            CreateDataDatabase();
-            Console.WriteLine("[OK] Base de dados de dados_recebidos criada/verificada com sucesso.");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[ERRO] Falha na criação da base de dados de dados_recebidos: {ex.Message}");
-        }
-    }
+        string dbPath = "dados_recebidos.db";
+        bool isNewDatabase = !System.IO.File.Exists(dbPath);
 
-    private static void CreateDataDatabase()
-    {
-        string dbPath = Path.Combine(Environment.CurrentDirectory, "dados_recebidos.db");
-        Console.WriteLine($"[DEBUG] Caminho da dados DB: {dbPath}");
-
-        try
+        using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;"))
         {
-            if (!File.Exists(dbPath))
+            conn.Open();
+
+            if (isNewDatabase)
             {
-                SQLiteConnection.CreateFile(dbPath);
-                Console.WriteLine("[INFO] Ficheiro dados_recebidos.db criado.");
-            }
+                // Create dados_wavy table
+                using (var cmd = new SQLiteCommand(conn))
+                {
+                    cmd.CommandText = @"
+                        CREATE TABLE dados_wavy (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            wavy_id TEXT NOT NULL,
+                            data TEXT NOT NULL,
+                            timestamp TEXT NOT NULL
+                        )";
+                    cmd.ExecuteNonQuery();
+                }
 
-            using (var connection = new SQLiteConnection($"Data Source={dbPath};Version=3;"))
+                Console.WriteLine("Base de dados criada com sucesso.");
+            }
+            else
             {
-                connection.Open();
-
-                string createDataTable = @"
-                    CREATE TABLE IF NOT EXISTS dados_wavy (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        wavy_id TEXT,
-                        data_linha TEXT,
-                        data_recebida TEXT
-                    );";
-
-                using (var command = new SQLiteCommand(createDataTable, connection))
-                    command.ExecuteNonQuery();
-
-                Console.WriteLine("[OK] Tabela dados_wavy criada/verificada.");
+                Console.WriteLine("Base de dados já existe.");
             }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[ERRO] Erro ao criar dados_recebidos.db: {ex.Message}");
         }
     }
 }

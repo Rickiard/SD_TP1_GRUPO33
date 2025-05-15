@@ -4,18 +4,20 @@ option csharp_namespace = "AnalysisServer.Protos";
 
 package analysis;
 
+// The analysis service definition
 service AnalysisService {
+  // Analyzes and validates the data
   rpc AnalyzeData (AnalysisRequest) returns (AnalysisResponse);
 }
 
+// The request message containing the data to analyze
 message AnalysisRequest {
   string wavy_id = 1;
-  string processed_data = 2;
+  string data = 2;
 }
 
+// The response message containing the analysis result
 message AnalysisResponse {
-  string wavy_id = 1;
-  string analysis_result = 2;
-  bool success = 3;
-  string message = 4;
+  bool success = 1;
+  string message = 2;
 } 
