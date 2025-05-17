@@ -15,6 +15,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AggregatorServer", "..\Aggr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OceanServer", "..\OceanServer\OceanServer.csproj", "{2DB4D206-E4C2-45D9-AFE2-88A6E1FCE823}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RPC_PreprocessingService", "..\RPC_PreprocessingService\RPC_PreprocessingService.csproj", "{51D15FCB-7272-4305-BE2A-25E63037BB6B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RPC_DataAnalyserService", "..\RPC_DataAnalyserService\RPC_DataAnalyserService.csproj", "{F30AEACB-7ABC-4C61-885E-7626F13DB793}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +37,14 @@ Global
 		{2DB4D206-E4C2-45D9-AFE2-88A6E1FCE823}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2DB4D206-E4C2-45D9-AFE2-88A6E1FCE823}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2DB4D206-E4C2-45D9-AFE2-88A6E1FCE823}.Release|Any CPU.Build.0 = Release|Any CPU
+		{51D15FCB-7272-4305-BE2A-25E63037BB6B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{51D15FCB-7272-4305-BE2A-25E63037BB6B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{51D15FCB-7272-4305-BE2A-25E63037BB6B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{51D15FCB-7272-4305-BE2A-25E63037BB6B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F30AEACB-7ABC-4C61-885E-7626F13DB793}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F30AEACB-7ABC-4C61-885E-7626F13DB793}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F30AEACB-7ABC-4C61-885E-7626F13DB793}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F30AEACB-7ABC-4C61-885E-7626F13DB793}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

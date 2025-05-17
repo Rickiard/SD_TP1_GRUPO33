@@ -6,6 +6,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
+using System.Threading.Tasks;
+using Grpc.Net.Client;
+using RPC_PreprocessingServiceClient;
 
 class AgregadorManager
 {
@@ -195,8 +198,17 @@ class AgregadorManager
         }
     }
 
-    static void SaveWavyDataToFile(string message, string aggregatorId)
+    static async void SaveWavyDataToFile(string message, string aggregatorId)
     {
+        // The port number must match the port of the gRPC server.
+        using var channel = GrpcChannel.ForAddress("https://localhost:7270");
+        var client = new Greeter.GreeterClient(channel);
+        var reply = await client.SayHelloAsync(
+                          new HelloRequest { Name = "GreeterClient" });
+        Console.WriteLine("Greeting: " + reply.Message);
+        Console.WriteLine("Press any key to exit...");
+        Console.ReadKey();
+
         string[] parts = message.Split(':');
         if (parts.Length < 3 || !parts[0].Equals("DATA_CSV")) return;
 

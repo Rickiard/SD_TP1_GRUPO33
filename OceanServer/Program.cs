@@ -4,6 +4,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
+using Grpc.Net.Client;
+using RPC_DataAnalyserServiceClient;
 
 class TCPServer
 {
@@ -73,8 +76,17 @@ class TCPServer
         }
     }
 
-    static void ProcessCSVData(string message)
+    static async void ProcessCSVData(string message)
     {
+        // The port number must match the port of the gRPC server.
+        using var channel = GrpcChannel.ForAddress("https://localhost:7038");
+        var client = new Greeter.GreeterClient(channel);
+        var reply = await client.SayHelloAsync(
+                          new HelloRequest { Name = "GreeterClient" });
+        Console.WriteLine("Greeting: " + reply.Message);
+        Console.WriteLine("Press any key to exit...");
+        Console.ReadKey();
+
         string[] parts = message.Split(':', 3); // Dividir apenas em duas partes
         if (parts.Length < 2) return;
 
