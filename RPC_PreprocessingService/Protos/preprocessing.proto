@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+option csharp_namespace = "RPC_PreprocessingService";
+
+package preprocessing;
+
+// The preprocessing service definition
+service PreprocessingService {
+  // Convert data between different formats
+  rpc ConvertFormat (FormatConversionRequest) returns (FormatConversionResponse);
+  
+  // Normalize sensor reading rates
+  rpc NormalizeSensorRates (SensorDataRequest) returns (SensorDataResponse);
+}
+
+// Request message for format conversion
+message FormatConversionRequest {
+  string input_format = 1;  // e.g., "text", "csv", "xml", "json"
+  string output_format = 2;
+  bytes data = 3;
+}
+
+// Response message for format conversion
+message FormatConversionResponse {
+  bytes converted_data = 1;
+  bool success = 2;
+  string error_message = 3;
+}
+
+// Request message for sensor data
+message SensorDataRequest {
+  repeated SensorReading readings = 1;
+  string target_rate = 2;  // e.g., "1Hz", "5Hz"
+}
+
+// Response message for sensor data
+message SensorDataResponse {
+  repeated SensorReading normalized_readings = 1;
+  bool success = 2;
+  string error_message = 3;
+}
+
+// Sensor reading message
+message SensorReading {
+  string sensor_id = 1;
+  double value = 2;
+  string timestamp = 3;
+  string unit = 4;
+} 
