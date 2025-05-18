@@ -19,41 +19,27 @@ namespace WavyClient.Models
         public MessageType Type { get; set; }
 
         /// <summary>
-        /// The content of the message, which varies depending on the message type.
-        /// </summary>
-        public string Data { get; set; }
-
-        /// <summary>
-        /// The type of sensor associated with the message.
-        /// </summary>
-        public string SensorType { get; set; }
-
-        /// <summary>
-        /// The location associated with the message.
-        /// </summary>
-        public string Location { get; set; }
-
-        /// <summary>
         /// The timestamp when the message was created.
         /// </summary>
         public DateTime Timestamp { get; set; }
+
+        /// <summary>
+        /// The content of the message, which varies depending on the message type.
+        /// </summary>
+        public string Content { get; set; }
 
         /// <summary>
         /// Creates a new instance of the WavyMessage class.
         /// </summary>
         /// <param name="wavyId">The unique identifier of the WAVY device.</param>
         /// <param name="type">The type of message being sent.</param>
-        /// <param name="data">The content of the message.</param>
-        /// <param name="sensorType">The type of sensor associated with the message.</param>
-        /// <param name="location">The location associated with the message.</param>
-        public WavyMessage(string wavyId, MessageType type, string data, string sensorType = "", string location = "")
+        /// <param name="content">The content of the message.</param>
+        public WavyMessage(string wavyId, MessageType type, string content)
         {
             WavyId = wavyId;
             Type = type;
-            Data = data;
-            SensorType = sensorType;
-            Location = location;
             Timestamp = DateTime.UtcNow;
+            Content = content;
         }
 
         /// <summary>
@@ -94,6 +80,11 @@ namespace WavyClient.Models
         /// <summary>
         /// A quit message sent when a WAVY device disconnects from the system.
         /// </summary>
-        Quit
+        Quit,
+
+        /// <summary>
+        /// A status request message.
+        /// </summary>
+        StatusRequest
     }
 }
