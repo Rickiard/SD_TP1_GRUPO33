@@ -1,5 +1,7 @@
-﻿using System;
+﻿﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -78,19 +80,11 @@ class TCPServer
 
     static async void ProcessCSVData(string message)
     {
-        // The port number must match the port of the gRPC server.
-        using var channel = GrpcChannel.ForAddress("https://localhost:7038");
-        var client = new Greeter.GreeterClient(channel);
-        var reply = await client.SayHelloAsync(
-                          new HelloRequest { Name = "GreeterClient" });
-        Console.WriteLine("Greeting: " + reply.Message);
-        Console.WriteLine("Press any key to exit...");
-        Console.ReadKey();
+        string[] parts = message.Split(':', 3); // Dividir apenas em três partes
+        if (parts.Length < 3) return;
 
-        string[] parts = message.Split(':', 3); // Dividir apenas em duas partes
-        if (parts.Length < 2) return;
-
-        string csvData = parts[2]; // O CSV completo está na segunda parte
+        string wavyId = parts[1];
+        string csvData = parts[2]; // O CSV completo está na terceira parte
 
         if (string.IsNullOrWhiteSpace(csvData))
         {
@@ -98,7 +92,7 @@ class TCPServer
             return;
         }
 
-        string filePath = Path.Combine(DataDirectory, $"{parts[1]}.csv");
+        string filePath = Path.Combine(DataDirectory, $"{wavyId}.csv");
         Directory.CreateDirectory(DataDirectory);
 
         bool hasMutex = false;
@@ -107,9 +101,15 @@ class TCPServer
             mutex.WaitOne();
             hasMutex = true;
 
+            // Save the raw data
             File.AppendAllText(filePath, csvData + "\n");
             Console.WriteLine($"Dados agregados armazenados em {filePath}");
-            DatabaseHelper.GuardarDadoCSV(parts[1], csvData);
+            
+            // Process the data with the DataAnalyserService
+            await AnalyzeDataWithRPC(wavyId, csvData);
+            
+            // Save to database
+            DatabaseHelper.GuardarDadoCSV(wavyId, csvData);
 
             // Limpar linhas em branco do ficheiro CSV
             CleanEmptyLinesFromCSV(filePath);
@@ -120,6 +120,75 @@ class TCPServer
             {
                 mutex.ReleaseMutex();
             }
+        }
+    }
+    
+    static async Task AnalyzeDataWithRPC(string wavyId, string csvData)
+    {
+        try
+        {
+            // Connect to the DataAnalyserService
+            using var channel = GrpcChannel.ForAddress("https://localhost:7038");
+            var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
+            
+            // Parse the CSV data to create sensor data points
+            var dataPoints = new List<RPC_DataAnalyserServiceClient.SensorData>();
+            
+            string[] lines = csvData.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                string[] values = line.Split(',');
+                if (values.Length >= 4)
+                {
+                    try
+                    {
+                        var sensorData = new RPC_DataAnalyserServiceClient.SensorData
+                        {
+                            SensorId = values[0],
+                            Value = double.Parse(values[1]),
+                            Timestamp = values[2],
+                            Unit = values[3]
+                        };
+                        dataPoints.Add(sensorData);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Erro ao processar linha CSV: {ex.Message}");
+                    }
+                }
+            }
+            
+            if (dataPoints.Count > 0)
+            {
+                // Create the analysis request
+                var request = new RPC_DataAnalyserServiceClient.AnalysisRequest
+                {
+                    AnalysisType = "mean",
+                    TimeRange = "1h"
+                };
+                request.DataPoints.AddRange(dataPoints);
+                
+                // Call the RPC service
+                Console.WriteLine($"Enviando {dataPoints.Count} pontos de dados para análise...");
+                var response = await client.AnalyzeDataAsync(request);
+                
+                if (response.Success)
+                {
+                    Console.WriteLine($"Análise concluída para WAVY {wavyId}:");
+                    foreach (var stat in response.Statistics)
+                    {
+                        Console.WriteLine($"  {stat.Key}: {stat.Value}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"Erro na análise: {response.ErrorMessage}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao analisar dados com RPC: {ex.Message}");
         }
     }
 

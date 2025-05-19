@@ -2,20 +2,57 @@ syntax = "proto3";
 
 option csharp_namespace = "RPC_DataAnalyserServiceClient";
 
-package greet;
+package analysis;
 
-// The greeting service definition.
-service Greeter {
-  // Sends a greeting
-  rpc SayHello (HelloRequest) returns (HelloReply);
+// The data analysis service definition
+service DataAnalysisService {
+  // Perform statistical analysis on sensor data
+  rpc AnalyzeData (AnalysisRequest) returns (AnalysisResponse);
+  
+  // Detect patterns in sensor data
+  rpc DetectPatterns (PatternDetectionRequest) returns (PatternDetectionResponse);
 }
 
-// The request message containing the user's name.
-message HelloRequest {
-  string name = 1;
+// Request message for data analysis
+message AnalysisRequest {
+  repeated SensorData data_points = 1;
+  string analysis_type = 2;  // e.g., "mean", "median", "std_dev"
+  string time_range = 3;     // e.g., "1h", "1d", "1w"
 }
 
-// The response message containing the greetings.
-message HelloReply {
-  string message = 1;
+// Response message for data analysis
+message AnalysisResponse {
+  map<string, double> statistics = 1;  // e.g., {"mean": 25.5, "std_dev": 2.3}
+  bool success = 2;
+  string error_message = 3;
+}
+
+// Request message for pattern detection
+message PatternDetectionRequest {
+  repeated SensorData data_points = 1;
+  string pattern_type = 2;  // e.g., "trend", "anomaly", "cycle"
+}
+
+// Response message for pattern detection
+message PatternDetectionResponse {
+  repeated Pattern patterns = 1;
+  bool success = 2;
+  string error_message = 3;
+}
+
+// Sensor data message
+message SensorData {
+  string sensor_id = 1;
+  double value = 2;
+  string timestamp = 3;
+  string unit = 4;
+}
+
+// Pattern message
+message Pattern {
+  string type = 1;
+  string description = 2;
+  double confidence = 3;
+  string start_time = 4;
+  string end_time = 5;
 }

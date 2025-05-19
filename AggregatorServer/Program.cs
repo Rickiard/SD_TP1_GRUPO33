@@ -1,11 +1,10 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
 using System.Threading.Tasks;
 using Grpc.Net.Client;
 using RPC_PreprocessingServiceClient;
@@ -200,15 +199,6 @@ class AgregadorManager
 
     static async void SaveWavyDataToFile(string message, string aggregatorId)
     {
-        // The port number must match the port of the gRPC server.
-        using var channel = GrpcChannel.ForAddress("https://localhost:7270");
-        var client = new Greeter.GreeterClient(channel);
-        var reply = await client.SayHelloAsync(
-                          new HelloRequest { Name = "GreeterClient" });
-        Console.WriteLine("Greeting: " + reply.Message);
-        Console.WriteLine("Press any key to exit...");
-        Console.ReadKey();
-
         string[] parts = message.Split(':');
         if (parts.Length < 3 || !parts[0].Equals("DATA_CSV")) return;
 
@@ -244,7 +234,9 @@ class AgregadorManager
             if (bufferCopy.Count >= volumeToSend.Value)
             {
                 string aggregatedData = string.Join(Environment.NewLine, bufferCopy);
-                bool success = SendMessageToServer($"DATA_CSV:{wavyId}:{aggregatedData}", aggregatorId);
+                
+                // Use the PreprocessingService to normalize the data
+                bool success = await ProcessDataWithRPC(wavyId, aggregatedData, aggregatorId);
 
                 if (success)
                 {
@@ -256,7 +248,7 @@ class AgregadorManager
         }
     }
 
-    static void FlushRemainingData(string aggregatorId)
+    static async void FlushRemainingData(string aggregatorId)
     {
         lock (bufferLock)
         {
@@ -266,7 +258,7 @@ class AgregadorManager
                 if (bufferCopy.Count > 0)
                 {
                     string aggregatedData = string.Join(Environment.NewLine, bufferCopy);
-                    bool success = SendMessageToServer($"DATA_CSV:{wavyId}:{aggregatedData}", aggregatorId);
+                    bool success = await ProcessDataWithRPC(wavyId, aggregatedData, aggregatorId);
 
                     if (success)
                     {
@@ -277,6 +269,51 @@ class AgregadorManager
                     }
                 }
             }
+        }
+    }
+    
+    static async Task<bool> ProcessDataWithRPC(string wavyId, string aggregatedData, string aggregatorId)
+    {
+        try
+        {
+            // Connect to the PreprocessingService
+            using var channel = GrpcChannel.ForAddress("https://localhost:7270");
+            var client = new RPC_PreprocessingServiceClient.PreprocessingService.PreprocessingServiceClient(channel);
+            
+            // Convert the CSV data to bytes for the RPC call
+            byte[] dataBytes = Encoding.UTF8.GetBytes(aggregatedData);
+            
+            // Create the request
+            var request = new RPC_PreprocessingServiceClient.FormatConversionRequest
+            {
+                InputFormat = "csv",
+                OutputFormat = "csv",
+                Data = Google.Protobuf.ByteString.CopyFrom(dataBytes)
+            };
+            
+            // Call the RPC service
+            Console.WriteLine($"[{aggregatorId}] Enviando dados para o serviço de pré-processamento...");
+            var response = await client.ConvertFormatAsync(request);
+            
+            if (response.Success)
+            {
+                // Convert the processed data back to string
+                string processedData = Encoding.UTF8.GetString(response.ConvertedData.ToByteArray());
+                
+                // Send the processed data to the server
+                bool success = SendMessageToServer($"DATA_CSV:{wavyId}:{processedData}", aggregatorId);
+                return success;
+            }
+            else
+            {
+                Console.WriteLine($"[{aggregatorId}] Erro no serviço de pré-processamento: {response.ErrorMessage}");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{aggregatorId}] Erro ao processar dados com RPC: {ex.Message}");
+            return false;
         }
     }
 
