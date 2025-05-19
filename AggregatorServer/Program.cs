@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
@@ -197,7 +197,7 @@ class AgregadorManager
         }
     }
 
-    static async void SaveWavyDataToFile(string message, string aggregatorId)
+    static void SaveWavyDataToFile(string message, string aggregatorId)
     {
         string[] parts = message.Split(':');
         if (parts.Length < 3 || !parts[0].Equals("DATA_CSV")) return;
@@ -235,8 +235,10 @@ class AgregadorManager
             {
                 string aggregatedData = string.Join(Environment.NewLine, bufferCopy);
                 
-                // Use the PreprocessingService to normalize the data
-                bool success = await ProcessDataWithRPC(wavyId, aggregatedData, aggregatorId);
+                // Use the PreprocessingService to normalize the data - chamada síncrona
+                Task<bool> task = ProcessDataWithRPC(wavyId, aggregatedData, aggregatorId);
+                task.Wait(); // Espera a tarefa completar de forma síncrona
+                bool success = task.Result;
 
                 if (success)
                 {
@@ -248,8 +250,11 @@ class AgregadorManager
         }
     }
 
-    static async void FlushRemainingData(string aggregatorId)
+    static void FlushRemainingData(string aggregatorId)
     {
+        Dictionary<string, string> dataToProcess = new Dictionary<string, string>();
+        
+        // Primeiro, copiamos os dados que precisamos processar fora do lock
         lock (bufferLock)
         {
             foreach (var wavyId in dataBuffer.Keys)
@@ -258,16 +263,34 @@ class AgregadorManager
                 if (bufferCopy.Count > 0)
                 {
                     string aggregatedData = string.Join(Environment.NewLine, bufferCopy);
-                    bool success = await ProcessDataWithRPC(wavyId, aggregatedData, aggregatorId);
-
-                    if (success)
-                    {
-                        dataBuffer[wavyId].Clear();
-                        string fileName = $"{aggregatorId}_WAVY_{wavyId}.csv";
-                        lock (fileLocks[wavyId]) File.WriteAllText(fileName, string.Empty);
-                        Console.WriteLine($"[{aggregatorId}] Dados restantes enviados e buffer limpo para WAVY '{wavyId}'.");
-                    }
+                    dataToProcess[wavyId] = aggregatedData;
                 }
+            }
+        }
+        
+        // Agora processamos os dados fora do lock
+        foreach (var kvp in dataToProcess)
+        {
+            string wavyId = kvp.Key;
+            string aggregatedData = kvp.Value;
+            
+            // Chamamos o método de forma síncrona para simplificar
+            bool success = ProcessDataWithRPC(wavyId, aggregatedData, aggregatorId).GetAwaiter().GetResult();
+            
+            if (success)
+            {
+                lock (bufferLock)
+                {
+                    dataBuffer[wavyId].Clear();
+                }
+                
+                string fileName = $"{aggregatorId}_WAVY_{wavyId}.csv";
+                lock (fileLocks[wavyId]) 
+                {
+                    File.WriteAllText(fileName, string.Empty);
+                }
+                
+                Console.WriteLine($"[{aggregatorId}] Dados restantes enviados e buffer limpo para WAVY '{wavyId}'.");
             }
         }
     }
