@@ -1,4 +1,4 @@
-﻿﻿﻿﻿using System;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -181,9 +181,9 @@ class TCPServer
             // Make sure this URL matches the actual URL where RPC_DataAnalyserService is running
             var channelOptions = new GrpcChannelOptions { HttpClient = httpClient };
             
-            Console.WriteLine("Tentando conectar ao serviço RPC_DataAnalyserService...");
-            // Try HTTP instead of HTTPS
-            using var channel = GrpcChannel.ForAddress("http://localhost:5131", channelOptions);
+            Console.WriteLine($"Tentando conectar ao serviço RPC_DataAnalyserService em {_rpcServiceUrl}...");
+            // Use the URL that was successful in the availability check
+            using var channel = GrpcChannel.ForAddress(_rpcServiceUrl, channelOptions);
             var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
             
             // Parse the CSV data to create sensor data points
@@ -374,21 +374,78 @@ class TCPServer
             httpClientHandler.ServerCertificateCustomValidationCallback = 
                 HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
             
-            // Set a short timeout to avoid hanging
+            // Set a longer timeout to give the service time to respond
             var httpClient = new HttpClient(httpClientHandler)
             {
-                Timeout = TimeSpan.FromSeconds(3)
+                Timeout = TimeSpan.FromSeconds(10)
             };
             
             // Set environment variable to allow HTTP/2 without TLS
             AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
             
-            // Try to connect to the RPC service
+            // Try to connect to the RPC service using a gRPC channel
             Console.WriteLine("Verificando disponibilidade do serviço RPC_DataAnalyserService...");
-            var response = await httpClient.GetAsync("http://localhost:5131");
-            Console.WriteLine($"RPC service status: {response.StatusCode}");
             
-            return response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound;
+            // List of possible URLs to try
+            string[] urls = new string[] 
+            {
+                "http://localhost:5038",
+                "https://localhost:7038",
+                "http://localhost:5131"
+            };
+            
+            foreach (var url in urls)
+            {
+                try
+                {
+                    Console.WriteLine($"Tentando conectar a {url}...");
+                    
+                    // Create a channel to the service
+                    var channelOptions = new GrpcChannelOptions { HttpClient = httpClient };
+                    using var channel = GrpcChannel.ForAddress(url, channelOptions);
+                    
+                    // Try to create a client - this will throw an exception if the service is not available
+                    var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
+                    
+                    // Try to make a simple call with a short deadline to check if the service is responsive
+                    var deadline = DateTime.UtcNow.AddSeconds(5);
+                    var callOptions = new CallOptions(deadline: deadline);
+                    
+                    // Create a minimal request just to test connectivity
+                    var request = new RPC_DataAnalyserServiceClient.AnalysisRequest
+                    {
+                        AnalysisType = "ping",
+                        TimeRange = "1s"
+                    };
+                    
+                    // We don't care about the response, just that the call doesn't throw an exception
+                    await client.AnalyzeDataAsync(request, callOptions);
+                    
+                    Console.WriteLine($"Conexão com o serviço RPC estabelecida com sucesso em {url}.");
+                    
+                    // Store the successful URL for later use
+                    _rpcServiceUrl = url;
+                    return true;
+                }
+                catch (RpcException rpcEx)
+                {
+                    // If we get a specific gRPC error, the service is available but returned an error
+                    Console.WriteLine($"Serviço RPC em {url} disponível, mas retornou erro: {rpcEx.Status.Detail}");
+                    
+                    // Store the URL even if there was an error, as the service is responding
+                    _rpcServiceUrl = url;
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Não foi possível conectar ao serviço RPC em {url}: {ex.Message}");
+                    // Continue to the next URL
+                }
+            }
+            
+            // If we get here, none of the URLs worked
+            Console.WriteLine("Não foi possível conectar ao serviço RPC em nenhuma das URLs tentadas.");
+            return false;
         }
         catch (Exception ex)
         {
@@ -396,6 +453,9 @@ class TCPServer
             return false;
         }
     }
+    
+    // Store the successful RPC service URL for later use
+    private static string _rpcServiceUrl = "http://localhost:5038"; // Default URL
     
     static void Main()
     {
@@ -418,7 +478,7 @@ class TCPServer
             if (!rpcAvailable)
             {
                 Console.WriteLine("AVISO: O serviço RPC_DataAnalyserService não parece estar disponível.");
-                Console.WriteLine("Certifique-se de que o serviço está em execução na porta 5131.");
+                Console.WriteLine("Certifique-se de que o serviço está em execução na porta 5038.");
                 Console.WriteLine("O OceanServer continuará funcionando, mas a análise de dados não será realizada.");
             }
             else
