@@ -1,328 +1,268 @@
-﻿using System;
+﻿﻿using System;
 using System.IO;
-using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
-class Wavy
+namespace WavyClient
 {
-    const int MAX_RETRIES = 5; // Número máximo de tentativas de reconexão
-    const int RETRY_DELAY_MS = 5000; // Tempo de espera entre tentativas (em milissegundos)
-    const int CONNECTION_TIMEOUT_MS = 10000; // Timeout para estabelecer conexão (em milissegundos)
-    static Mutex mutex = new Mutex(); // Mutex para sincronizar acesso ao ficheiro de progresso
-
-    static void Main(string[] args)
+    class Wavy
     {
-        if (args.Length != 4)
+        const int MAX_RETRIES = 5; // Número máximo de tentativas de reconexão
+        const int RETRY_DELAY_MS = 5000; // Tempo de espera entre tentativas (em milissegundos)
+        const string RABBITMQ_HOST = "localhost"; // Host do RabbitMQ
+        const string EXCHANGE_NAME = "wavy_exchange"; // Nome da exchange
+        static Mutex mutex = new Mutex(); // Mutex para sincronizar acesso ao ficheiro de progresso
+        static ManualResetEvent[] wavyCompletionEvents;
+
+        static void Main(string[] args)
         {
-            Console.WriteLine("Uso: Wavy <IP do Agregador> <Porta>");
-            return;
-        }
-
-        // Criar threads para executar as WAVYs simultaneamente
-        Thread wavy1 = new Thread(() => ExecuteWavy("001", args[0], args[1], "buoy - Cópia.csv"));
-        Thread wavy2 = new Thread(() => ExecuteWavy("002", args[0], args[2], "buoy - Cópia (2).csv"));
-        Thread wavy3 = new Thread(() => ExecuteWavy("003", args[0], args[3], "buoy - Cópia (3).csv"));
-        Thread wavy4 = new Thread(() => ExecuteWavy("004", args[0], args[3], "buoy - Cópia (4).csv"));
-
-        // Iniciar as threads
-        wavy1.Start();
-        wavy2.Start();
-        wavy3.Start();
-        wavy4.Start();
-
-        // Aguardar a conclusão das threads
-        wavy1.Join();
-        wavy2.Join();
-        wavy3.Join();
-        wavy4.Join();
-
-        Console.WriteLine("Todas as WAVYs foram concluídas.");
-    }
-
-    static void ExecuteWavy(string id, string ip, string port, string filename)
-    {
-        bool wavy = true; // Variável local para controlar o estado da WAVY
-        string progressFile = $"progress_WAVY{id}.txt"; // Arquivo de progresso específico para cada WAVY
-
-        // Tentar executar a WAVY até 3 vezes, se necessário
-        for (int attempt = 1; attempt <= 3; attempt++)
-        {
-            Console.WriteLine($"Iniciando WAVY{id}, tentativa {attempt}...");
-            StartWavy(id, ip, port, filename, ref wavy, progressFile);
-
-            if (wavy)
+            if (args.Length != 1)
             {
-                Console.WriteLine($"WAVY{id} concluída com sucesso.");
-                break;
+                Console.WriteLine("Uso: Wavy <RabbitMQ Host>");
+                Console.WriteLine("Usando localhost como padrão para RabbitMQ");
             }
 
-            Console.WriteLine($"WAVY{id} falhou na tentativa {attempt}. Retentando...");
-        }
+            string rabbitMqHost = args.Length > 0 ? args[0] : RABBITMQ_HOST;
 
-        // Reiniciar o estado para a próxima execução
-        mutex.WaitOne();
-        try
-        {
-            if (File.Exists(progressFile))
+            // Criar eventos para sinalizar a conclusão de cada WAVY
+            wavyCompletionEvents = new ManualResetEvent[4];
+            for (int i = 0; i < wavyCompletionEvents.Length; i++)
             {
-                File.Delete(progressFile);
-            }
-        }
-        finally
-        {
-            mutex.ReleaseMutex();
-        }
-    }
-
-    static void StartWavy(string id, string ip, string port, string filename, ref bool wavy, string progressFile)
-    {
-        string wavyId = id;
-        string aggregatorIp = ip;
-        int aggregatorPort = Convert.ToInt32(port);
-
-        TcpClient client = null;
-        NetworkStream stream = null;
-
-        try
-        {
-            // Carregar o progresso salvo
-            int lastProcessedLine = LoadProgress(progressFile);
-            Console.WriteLine($"Última linha processada para WAVY{id}: {lastProcessedLine}");
-
-            client = ConnectToAggregator(aggregatorIp, aggregatorPort);
-            stream = client.GetStream();
-
-            // Enviar identificação inicial
-            string helloMessage = $"HELLO:WAVY{wavyId}";
-            SendMessage(stream, helloMessage);
-
-            // Receber resposta do agregador
-            string response = ReceiveMessageWithRetry(stream);
-            Console.WriteLine("AGREGADOR: " + response);
-            if (response == "DENIED")
-            {
-                wavy = false;
-                return;
+                wavyCompletionEvents[i] = new ManualResetEvent(false);
             }
 
-            if (response.StartsWith("ACK"))
+            // Criar threads para executar as WAVYs simultaneamente
+            Thread wavy1 = new Thread(() => ExecuteWavy("001", rabbitMqHost, "buoy - Cópia.csv", 0));
+            Thread wavy2 = new Thread(() => ExecuteWavy("002", rabbitMqHost, "buoy - Cópia (2).csv", 1));
+            Thread wavy3 = new Thread(() => ExecuteWavy("003", rabbitMqHost, "buoy - Cópia (3).csv", 2));
+            Thread wavy4 = new Thread(() => ExecuteWavy("004", rabbitMqHost, "buoy - Cópia (4).csv", 3));
+
+            // Iniciar as threads
+            wavy1.Start();
+            wavy2.Start();
+            wavy3.Start();
+            wavy4.Start();
+
+            // Aguardar a conclusão de todas as WAVYs
+            WaitHandle.WaitAll(wavyCompletionEvents);
+
+            Console.WriteLine("Todas as WAVYs foram concluídas.");
+        }
+
+        static void ExecuteWavy(string id, string rabbitMqHost, string filename, int eventIndex)
+        {
+            bool wavySuccess = false; // Variável local para controlar o estado da WAVY
+            string progressFile = $"progress_WAVY{id}.txt"; // Arquivo de progresso específico para cada WAVY
+
+            // Tentar executar a WAVY até 3 vezes, se necessário
+            for (int attempt = 1; attempt <= 3 && !wavySuccess; attempt++)
             {
-                // Ler dados do ficheiro CSV e enviá-los aos poucos
-                if (File.Exists(filename))
+                Console.WriteLine($"Iniciando WAVY{id}, tentativa {attempt}...");
+                wavySuccess = StartWavy(id, rabbitMqHost, filename, progressFile);
+
+                if (wavySuccess)
                 {
-                    string[] lines = File.ReadAllLines(filename);
-                    for (int i = lastProcessedLine; i < lines.Length; i++)
+                    Console.WriteLine($"WAVY{id} concluída com sucesso.");
+                }
+                else
+                {
+                    Console.WriteLine($"WAVY{id} falhou na tentativa {attempt}. Retentando...");
+                    Thread.Sleep(RETRY_DELAY_MS);
+                }
+            }
+
+            // Reiniciar o estado para a próxima execução
+            mutex.WaitOne();
+            try
+            {
+                if (File.Exists(progressFile))
+                {
+                    File.Delete(progressFile);
+                }
+            }
+            finally
+            {
+                mutex.ReleaseMutex();
+            }
+
+            // Sinalizar que esta WAVY foi concluída
+            wavyCompletionEvents[eventIndex].Set();
+        }
+
+        static bool StartWavy(string id, string rabbitMqHost, string filename, string progressFile)
+        {
+            string wavyId = "WAVY" + id;
+            RabbitMQService rabbitMqService = null;
+
+            try
+            {
+                // Carregar o progresso salvo
+                int lastProcessedLine = LoadProgress(progressFile);
+                Console.WriteLine($"Última linha processada para {wavyId}: {lastProcessedLine}");
+
+                // Inicializar o serviço RabbitMQ
+                rabbitMqService = new RabbitMQService(rabbitMqHost, EXCHANGE_NAME, wavyId);
+                
+                // Configurar o handler para mensagens recebidas
+                AutoResetEvent responseReceived = new AutoResetEvent(false);
+                string lastResponse = null;
+                
+                rabbitMqService.OnMessageReceived += (message) =>
+                {
+                    Console.WriteLine($"AGREGADOR para {wavyId}: {message.MessageType} - {message.Data}");
+                    lastResponse = message.MessageType;
+                    responseReceived.Set();
+                };
+
+                // Enviar mensagem HELLO
+                var helloMessage = new WavyMessage(wavyId, "HELLO", "");
+                rabbitMqService.PublishMessage(helloMessage);
+                
+                // Aguardar resposta do agregador
+                if (!responseReceived.WaitOne(10000))
+                {
+                    Console.WriteLine($"{wavyId}: Timeout aguardando resposta do agregador.");
+                    return false;
+                }
+
+                if (lastResponse == "DENIED")
+                {
+                    Console.WriteLine($"{wavyId}: Conexão negada pelo agregador.");
+                    return false;
+                }
+
+                if (lastResponse == "ACK")
+                {
+                    // Ler dados do ficheiro CSV e enviá-los aos poucos
+                    if (File.Exists(filename))
                     {
-                        string line = lines[i];
-
-                        if (!string.IsNullOrWhiteSpace(line))
+                        string[] lines = File.ReadAllLines(filename);
+                        for (int i = lastProcessedLine; i < lines.Length; i++)
                         {
-                            bool success = false;
+                            string line = lines[i];
 
-                            while (!success)
+                            if (!string.IsNullOrWhiteSpace(line))
                             {
-                                try
+                                bool success = false;
+                                int retryCount = 0;
+
+                                while (!success && retryCount < MAX_RETRIES)
                                 {
-                                    string dataMessage = $"DATA_CSV:WAVY{wavyId}:{line}";
-                                    SendMessage(stream, dataMessage);
-
-                                    response = ReceiveMessageWithRetry(stream);
-                                    Console.WriteLine("AGREGADOR: " + response);
-
-                                    if (response.StartsWith("ACK"))
+                                    try
                                     {
-                                        success = true;
+                                        // Resetar o evento para aguardar nova resposta
+                                        responseReceived.Reset();
+                                        lastResponse = null;
+                                        
+                                        // Enviar dados
+                                        var dataMessage = new WavyMessage(wavyId, "DATA_CSV", line);
+                                        rabbitMqService.PublishMessage(dataMessage);
 
-                                        // Guardar progresso após envio bem-sucedido
-                                        mutex.WaitOne();
-                                        try
+                                        // Aguardar resposta
+                                        if (!responseReceived.WaitOne(10000))
                                         {
-                                            SaveProgress(progressFile, i);
+                                            throw new TimeoutException("Timeout aguardando resposta do agregador.");
                                         }
-                                        finally
+
+                                        if (lastResponse == "ACK")
                                         {
-                                            mutex.ReleaseMutex();
+                                            success = true;
+
+                                            // Guardar progresso após envio bem-sucedido
+                                            mutex.WaitOne();
+                                            try
+                                            {
+                                                SaveProgress(progressFile, i);
+                                            }
+                                            finally
+                                            {
+                                                mutex.ReleaseMutex();
+                                            }
+                                        }
+                                        else
+                                        {
+                                            Console.WriteLine($"{wavyId}: Resposta inesperada do agregador: {lastResponse}. Tentando novamente...");
+                                            retryCount++;
                                         }
                                     }
-                                    else
+                                    catch (Exception e)
                                     {
-                                        Console.WriteLine("Resposta inesperada do agregador. Tentando novamente...");
+                                        retryCount++;
+                                        Console.WriteLine($"{wavyId}: Erro durante o envio: {e.Message}. Tentativa {retryCount}/{MAX_RETRIES}");
+                                        Thread.Sleep(RETRY_DELAY_MS);
                                     }
                                 }
-                                catch (Exception e)
+
+                                if (!success)
                                 {
-                                    Console.WriteLine($"Erro durante o envio: {e.Message}. Tentando reconectar...");
-                                    Reconnect(ref client, ref stream, aggregatorIp, aggregatorPort);
+                                    Console.WriteLine($"{wavyId}: Falha ao enviar dados após {MAX_RETRIES} tentativas.");
+                                    return false;
                                 }
+
+                                Thread.Sleep(2000); // Pequeno atraso entre envios (2 segundos)
                             }
-
-                            Thread.Sleep(2000); // Pequeno atraso entre envios (2 segundos)
                         }
+                        
+                        // Enviar mensagem QUIT
+                        var quitMessage = new WavyMessage(wavyId, "QUIT", "");
+                        rabbitMqService.PublishMessage(quitMessage);
+                        
+                        return true;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"{wavyId}: Erro: Ficheiro não encontrado: {filename}");
+                        return false;
                     }
                 }
-                else
-                {
-                    Console.WriteLine("Erro: Ficheiro não encontrado.");
-                }
-            }
-            else if (response.StartsWith("DENIED"))
-            {
-                Console.WriteLine("Conexão negada pelo agregador.");
-            }
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine("Erro crítico: " + e.Message);
-        }
-        finally
-        {
-            string quitMessage = "QUIT";
-            SendMessage(stream, quitMessage);
-            Console.WriteLine($"WAVY{id}: Mensagem 'QUIT' enviada ao agregador.");
-            stream?.Close();
-            client?.Close();
-        }
-    }
-
-    static int LoadProgress(string progressFile)
-    {
-        mutex.WaitOne();
-        try
-        {
-            if (File.Exists(progressFile))
-            {
-                string content = File.ReadAllText(progressFile);
-                if (int.TryParse(content, out int progress))
-                {
-                    return progress;
-                }
-            }
-        }
-        finally
-        {
-            mutex.ReleaseMutex();
-        }
-
-        return 0; // Se não houver progresso guardado, começar do início
-    }
-
-    static void SaveProgress(string progressFile, int lineNumber)
-    {
-        mutex.WaitOne();
-        try
-        {
-            File.WriteAllText(progressFile, lineNumber.ToString());
-        }
-        finally
-        {
-            mutex.ReleaseMutex();
-        }
-    }
-
-    static TcpClient ConnectToAggregator(string ip, int port)
-    {
-        TcpClient client = null;
-        int retryCount = 0;
-
-        while (retryCount < MAX_RETRIES)
-        {
-            try
-            {
-                client = new TcpClient();
-                var result = client.BeginConnect(ip, port, null, null);
-                bool success = result.AsyncWaitHandle.WaitOne(CONNECTION_TIMEOUT_MS, true);
-
-                if (success && client.Connected)
-                {
-                    Console.WriteLine("Conexão estabelecida com sucesso.");
-                    return client;
-                }
-                else
-                {
-                    client.Close();
-                    throw new SocketException((int)SocketError.TimedOut);
-                }
+                
+                return false;
             }
             catch (Exception e)
             {
-                retryCount++;
-                Console.WriteLine($"Falha ao conectar ({retryCount}/{MAX_RETRIES}): {e.Message}");
-                if (retryCount >= MAX_RETRIES)
-                {
-                    throw new Exception("Número máximo de tentativas de conexão excedido.");
-                }
-                Thread.Sleep(RETRY_DELAY_MS);
+                Console.WriteLine($"{wavyId}: Erro crítico: {e.Message}");
+                return false;
+            }
+            finally
+            {
+                rabbitMqService?.Dispose();
             }
         }
 
-        return null;
-    }
-
-    static void Reconnect(ref TcpClient client, ref NetworkStream stream, string ip, int port)
-    {
-        Console.WriteLine("Tentando reconectar...");
-
-        if (stream != null)
+        static int LoadProgress(string progressFile)
         {
-            stream.Close();
-            stream = null;
-        }
-
-        if (client != null)
-        {
-            client.Close();
-            client = null;
-        }
-
-        client = ConnectToAggregator(ip, port);
-        stream = client.GetStream();
-
-        Console.WriteLine("Reconexão bem-sucedida.");
-    }
-
-    static void SendMessage(NetworkStream stream, string message)
-    {
-        byte[] data = Encoding.UTF8.GetBytes(message + "\n"); // Garantir quebra de linha
-        stream.Write(data, 0, data.Length);
-    }
-
-    static string ReceiveMessageWithRetry(NetworkStream stream)
-    {
-        int retryCount = 0;
-
-        while (retryCount < MAX_RETRIES)
-        {
+            mutex.WaitOne();
             try
             {
-                byte[] buffer = new byte[1024];
-                int bytesRead = stream.Read(buffer, 0, buffer.Length);
-
-                if (bytesRead == 0)
+                if (File.Exists(progressFile))
                 {
-                    throw new IOException("Conexão fechada pelo servidor.");
+                    string content = File.ReadAllText(progressFile);
+                    if (int.TryParse(content, out int progress))
+                    {
+                        return progress;
+                    }
                 }
-
-                string message = Encoding.UTF8.GetString(buffer, 0, bytesRead).Trim();
-                if (string.IsNullOrEmpty(message))
-                {
-                    throw new IOException("Mensagem recebida inválida.");
-                }
-
-                return message;
             }
-            catch (Exception e)
+            finally
             {
-                retryCount++;
-                Console.WriteLine($"Falha ao receber mensagem ({retryCount}/{MAX_RETRIES}): {e.Message}");
-                if (retryCount >= MAX_RETRIES)
-                {
-                    throw new Exception("Número máximo de tentativas de recepção excedido.");
-                }
-                Thread.Sleep(RETRY_DELAY_MS);
+                mutex.ReleaseMutex();
             }
+
+            return 0; // Se não houver progresso guardado, começar do início
         }
 
-        throw new Exception("Não foi possível receber mensagem após várias tentativas.");
+        static void SaveProgress(string progressFile, int lineNumber)
+        {
+            mutex.WaitOne();
+            try
+            {
+                File.WriteAllText(progressFile, lineNumber.ToString());
+            }
+            finally
+            {
+                mutex.ReleaseMutex();
+            }
+        }
     }
 }
