@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿using System;
+﻿﻿﻿﻿﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,6 +11,25 @@ using Grpc.Net.Client;
 using RPC_DataAnalyserServiceClient;
 using System.Net.Http;
 using Grpc.Core;
+
+// Extension method for Task timeout
+public static class TaskExtensions
+{
+    public static async Task<T> TimeoutAfter<T>(this Task<T> task, TimeSpan timeout)
+    {
+        using var timeoutCancellationTokenSource = new CancellationTokenSource();
+        var delayTask = Task.Delay(timeout, timeoutCancellationTokenSource.Token);
+        var completedTask = await Task.WhenAny(task, delayTask);
+        
+        if (completedTask == delayTask)
+        {
+            throw new TimeoutException("The operation has timed out.");
+        }
+        
+        timeoutCancellationTokenSource.Cancel();
+        return await task;
+    }
+}
 
 class TCPServer
 {
@@ -230,21 +249,9 @@ class TCPServer
                     var deadline = DateTime.UtcNow.AddSeconds(10); // Shorter timeout
                     var callOptions = new CallOptions(deadline: deadline);
                     
-                    // Create a task that will complete after the timeout
-                    var timeoutTask = Task.Delay(TimeSpan.FromSeconds(15));
-                    
-                    // Create the RPC call task
-                    var rpcTask = client.AnalyzeDataAsync(request, callOptions);
-                    
-                    // Wait for either the RPC call to complete or the timeout to occur
-                    var completedTask = await Task.WhenAny(rpcTask, timeoutTask);
-                    
-                    if (completedTask == timeoutTask)
-                    {
-                        throw new TimeoutException("A chamada RPC excedeu o tempo limite.");
-                    }
-                    
-                    var response = await rpcTask;
+                    // Call the RPC service
+                    Console.WriteLine("Enviando requisição para o serviço RPC...");
+                    var response = await client.AnalyzeDataAsync(request, callOptions);
                     
                     Console.WriteLine("Resposta do serviço RPC recebida.");
                     
