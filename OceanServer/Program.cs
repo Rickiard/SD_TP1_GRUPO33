@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -174,12 +174,16 @@ class TCPServer
                 Timeout = TimeSpan.FromSeconds(10)
             };
             
+            // Set environment variable to allow HTTP/2 without TLS
+            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
+            
             // Connect to the DataAnalyserService
             // Make sure this URL matches the actual URL where RPC_DataAnalyserService is running
             var channelOptions = new GrpcChannelOptions { HttpClient = httpClient };
             
             Console.WriteLine("Tentando conectar ao serviço RPC_DataAnalyserService...");
-            using var channel = GrpcChannel.ForAddress("https://localhost:7038", channelOptions);
+            // Try HTTP instead of HTTPS
+            using var channel = GrpcChannel.ForAddress("http://localhost:5038", channelOptions);
             var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
             
             // Parse the CSV data to create sensor data points
@@ -376,9 +380,12 @@ class TCPServer
                 Timeout = TimeSpan.FromSeconds(3)
             };
             
+            // Set environment variable to allow HTTP/2 without TLS
+            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
+            
             // Try to connect to the RPC service
             Console.WriteLine("Verificando disponibilidade do serviço RPC_DataAnalyserService...");
-            var response = await httpClient.GetAsync("https://localhost:7038");
+            var response = await httpClient.GetAsync("http://localhost:5038");
             Console.WriteLine($"RPC service status: {response.StatusCode}");
             
             return response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound;
