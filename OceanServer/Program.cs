@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -183,7 +183,7 @@ class TCPServer
             
             Console.WriteLine("Tentando conectar ao serviço RPC_DataAnalyserService...");
             // Try HTTP instead of HTTPS
-            using var channel = GrpcChannel.ForAddress("http://localhost:5038", channelOptions);
+            using var channel = GrpcChannel.ForAddress("http://localhost:5131", channelOptions);
             var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
             
             // Parse the CSV data to create sensor data points
@@ -385,7 +385,7 @@ class TCPServer
             
             // Try to connect to the RPC service
             Console.WriteLine("Verificando disponibilidade do serviço RPC_DataAnalyserService...");
-            var response = await httpClient.GetAsync("http://localhost:5038");
+            var response = await httpClient.GetAsync("http://localhost:5131");
             Console.WriteLine($"RPC service status: {response.StatusCode}");
             
             return response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound;
@@ -418,7 +418,7 @@ class TCPServer
             if (!rpcAvailable)
             {
                 Console.WriteLine("AVISO: O serviço RPC_DataAnalyserService não parece estar disponível.");
-                Console.WriteLine("Certifique-se de que o serviço está em execução na porta 7038.");
+                Console.WriteLine("Certifique-se de que o serviço está em execução na porta 5131.");
                 Console.WriteLine("O OceanServer continuará funcionando, mas a análise de dados não será realizada.");
             }
             else
