@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Net.Client;
 using RPC_DataAnalyserServiceClient;
+using System.Net.Http;
+using Grpc.Core;
 
 class TCPServer
 {
@@ -81,7 +83,11 @@ class TCPServer
     static async void ProcessCSVData(string message)
     {
         string[] parts = message.Split(':', 3); // Dividir apenas em três partes
-        if (parts.Length < 3) return;
+        if (parts.Length < 3) 
+        {
+            Console.WriteLine($"Formato de mensagem inválido: {message}");
+            return;
+        }
 
         string wavyId = parts[1];
         string csvData = parts[2]; // O CSV completo está na terceira parte
@@ -91,6 +97,9 @@ class TCPServer
             Console.WriteLine("Linha em branco ignorada.");
             return;
         }
+
+        Console.WriteLine($"Processando dados para WAVY {wavyId}");
+        Console.WriteLine($"Dados recebidos: {csvData.Substring(0, Math.Min(50, csvData.Length))}...");
 
         string filePath = Path.Combine(DataDirectory, $"{wavyId}.csv");
         Directory.CreateDirectory(DataDirectory);
@@ -105,7 +114,11 @@ class TCPServer
             File.AppendAllText(filePath, csvData + "\n");
             Console.WriteLine($"Dados agregados armazenados em {filePath}");
             
+            // Save to database first to ensure data is preserved
+            DatabaseHelper.GuardarDadoCSV(wavyId, csvData);
+            
             // Process the data with the DataAnalyserService
+            Console.WriteLine($"Iniciando análise de dados para WAVY {wavyId}...");
             bool analysisSuccess = await AnalyzeDataWithRPC(wavyId, csvData);
             
             if (analysisSuccess)
@@ -120,12 +133,14 @@ class TCPServer
             {
                 Console.WriteLine($"Falha na análise de dados para WAVY {wavyId}");
             }
-            
-            // Save to database
-            DatabaseHelper.GuardarDadoCSV(wavyId, csvData);
 
             // Limpar linhas em branco do ficheiro CSV
             CleanEmptyLinesFromCSV(filePath);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao processar dados CSV: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
         }
         finally
         {
@@ -140,8 +155,17 @@ class TCPServer
     {
         try
         {
+            // Configure the HttpClient to ignore certificate validation for development
+            var httpClientHandler = new HttpClientHandler();
+            httpClientHandler.ServerCertificateCustomValidationCallback = 
+                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+            
+            var httpClient = new HttpClient(httpClientHandler);
+            
             // Connect to the DataAnalyserService
-            using var channel = GrpcChannel.ForAddress("https://localhost:7038");
+            // Make sure this URL matches the actual URL where RPC_DataAnalyserService is running
+            var channelOptions = new GrpcChannelOptions { HttpClient = httpClient };
+            using var channel = GrpcChannel.ForAddress("https://localhost:7038", channelOptions);
             var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
             
             // Parse the CSV data to create sensor data points
@@ -183,26 +207,48 @@ class TCPServer
                 
                 // Call the RPC service
                 Console.WriteLine($"Enviando {dataPoints.Count} pontos de dados para análise...");
-                var response = await client.AnalyzeDataAsync(request);
                 
-                if (response.Success)
+                try
                 {
-                    Console.WriteLine($"Análise concluída para WAVY {wavyId}:");
-                    foreach (var stat in response.Statistics)
+                    Console.WriteLine("Chamando serviço RPC AnalyzeDataAsync...");
+                    
+                    // Set a deadline for the RPC call
+                    var deadline = DateTime.UtcNow.AddSeconds(30);
+                    var callOptions = new CallOptions(deadline: deadline);
+                    
+                    var response = await client.AnalyzeDataAsync(request, callOptions);
+                    
+                    Console.WriteLine("Resposta do serviço RPC recebida.");
+                    
+                    if (response.Success)
                     {
-                        Console.WriteLine($"  {stat.Key}: {stat.Value}");
+                        Console.WriteLine($"Análise concluída para WAVY {wavyId}:");
+                        foreach (var stat in response.Statistics)
+                        {
+                            Console.WriteLine($"  {stat.Key}: {stat.Value}");
+                        }
+                        
+                        // Store the analysis results in the database
+                        StoreAnalysisResults(wavyId, response.Statistics);
+                        
+                        return true;
                     }
-                    
-                    // Store the analysis results in the database
-                    StoreAnalysisResults(wavyId, response.Statistics);
-                    
-                    return true;
+                    else
+                    {
+                        Console.WriteLine($"Erro na análise: {response.ErrorMessage}");
+                        return false;
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"Erro na análise: {response.ErrorMessage}");
+                    Console.WriteLine($"Erro na chamada RPC: {ex.Message}");
+                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
                     return false;
                 }
+            }
+            else
+            {
+                Console.WriteLine("Nenhum ponto de dados válido para analisar.");
             }
             
             return false;
@@ -210,6 +256,7 @@ class TCPServer
         catch (Exception ex)
         {
             Console.WriteLine($"Erro ao analisar dados com RPC: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
             return false;
         }
     }
@@ -298,13 +345,36 @@ class TCPServer
         }
     }
 
+    static async Task<bool> VerifyRpcServiceAvailability()
+    {
+        try
+        {
+            // Configure the HttpClient to ignore certificate validation for development
+            var httpClientHandler = new HttpClientHandler();
+            httpClientHandler.ServerCertificateCustomValidationCallback = 
+                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+            
+            var httpClient = new HttpClient(httpClientHandler);
+            
+            // Try to connect to the RPC service
+            var response = await httpClient.GetAsync("https://localhost:7038");
+            Console.WriteLine($"RPC service status: {response.StatusCode}");
+            
+            return response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao verificar disponibilidade do serviço RPC: {ex.Message}");
+            return false;
+        }
+    }
+    
     static void Main()
     {
         Console.WriteLine("Inicializando base de dados...");
         try
         {
             DatabaseInitializer.InitializeDatabase();
-
         }
         catch (Exception ex)
         {
@@ -312,6 +382,18 @@ class TCPServer
         }
 
         DeleteDirectory("ReceivedData");
+        
+        // Verificar se o serviço RPC está disponível
+        bool rpcAvailable = VerifyRpcServiceAvailability().GetAwaiter().GetResult();
+        if (!rpcAvailable)
+        {
+            Console.WriteLine("AVISO: O serviço RPC_DataAnalyserService não parece estar disponível.");
+            Console.WriteLine("Certifique-se de que o serviço está em execução na porta 7038.");
+        }
+        else
+        {
+            Console.WriteLine("Serviço RPC_DataAnalyserService está disponível.");
+        }
 
         // Iniciar dois servidores em threads separadas
         Thread server1 = new Thread(() => StartServer(5000));
