@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿using System;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,25 +11,6 @@ using Grpc.Net.Client;
 using RPC_DataAnalyserServiceClient;
 using System.Net.Http;
 using Grpc.Core;
-
-// Extension method for Task timeout
-public static class TaskExtensions
-{
-    public static async Task<T> TimeoutAfter<T>(this Task<T> task, TimeSpan timeout)
-    {
-        using var timeoutCancellationTokenSource = new CancellationTokenSource();
-        var delayTask = Task.Delay(timeout, timeoutCancellationTokenSource.Token);
-        var completedTask = await Task.WhenAny(task, delayTask);
-        
-        if (completedTask == delayTask)
-        {
-            throw new TimeoutException("The operation has timed out.");
-        }
-        
-        timeoutCancellationTokenSource.Cancel();
-        return await task;
-    }
-}
 
 class TCPServer
 {
