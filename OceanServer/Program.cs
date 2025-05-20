@@ -106,7 +106,20 @@ class TCPServer
             Console.WriteLine($"Dados agregados armazenados em {filePath}");
             
             // Process the data with the DataAnalyserService
-            await AnalyzeDataWithRPC(wavyId, csvData);
+            bool analysisSuccess = await AnalyzeDataWithRPC(wavyId, csvData);
+            
+            if (analysisSuccess)
+            {
+                Console.WriteLine($"Análise de dados concluída com sucesso para WAVY {wavyId}");
+                
+                // After successful analysis, we could send a confirmation message
+                // to another service if needed, similar to how AggregatorServer
+                // sends data to OceanServer after preprocessing
+            }
+            else
+            {
+                Console.WriteLine($"Falha na análise de dados para WAVY {wavyId}");
+            }
             
             // Save to database
             DatabaseHelper.GuardarDadoCSV(wavyId, csvData);
@@ -123,7 +136,7 @@ class TCPServer
         }
     }
     
-    static async Task AnalyzeDataWithRPC(string wavyId, string csvData)
+    static async Task<bool> AnalyzeDataWithRPC(string wavyId, string csvData)
     {
         try
         {
@@ -179,16 +192,46 @@ class TCPServer
                     {
                         Console.WriteLine($"  {stat.Key}: {stat.Value}");
                     }
+                    
+                    // Store the analysis results in the database
+                    StoreAnalysisResults(wavyId, response.Statistics);
+                    
+                    return true;
                 }
                 else
                 {
                     Console.WriteLine($"Erro na análise: {response.ErrorMessage}");
+                    return false;
                 }
             }
+            
+            return false;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Erro ao analisar dados com RPC: {ex.Message}");
+            return false;
+        }
+    }
+    
+    static void StoreAnalysisResults(string wavyId, IDictionary<string, double> statistics)
+    {
+        try
+        {
+            // Here you would store the analysis results in the database
+            // For now, we'll just log them
+            Console.WriteLine($"Armazenando resultados de análise para WAVY {wavyId}:");
+            foreach (var stat in statistics)
+            {
+                Console.WriteLine($"  {stat.Key}: {stat.Value}");
+            }
+            
+            // You could implement database storage similar to GuardarDadoCSV
+            // DatabaseHelper.GuardarResultadosAnalise(wavyId, statistics);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao armazenar resultados de análise: {ex.Message}");
         }
     }
 
