@@ -1,4 +1,4 @@
-﻿﻿﻿﻿using System;
+﻿﻿﻿﻿﻿﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -118,20 +118,28 @@ class TCPServer
             DatabaseHelper.GuardarDadoCSV(wavyId, csvData);
             
             // Process the data with the DataAnalyserService
-            Console.WriteLine($"Iniciando análise de dados para WAVY {wavyId}...");
-            bool analysisSuccess = await AnalyzeDataWithRPC(wavyId, csvData);
-            
-            if (analysisSuccess)
+            try
             {
-                Console.WriteLine($"Análise de dados concluída com sucesso para WAVY {wavyId}");
+                Console.WriteLine($"Iniciando análise de dados para WAVY {wavyId}...");
+                bool analysisSuccess = await AnalyzeDataWithRPC(wavyId, csvData);
                 
-                // After successful analysis, we could send a confirmation message
-                // to another service if needed, similar to how AggregatorServer
-                // sends data to OceanServer after preprocessing
+                if (analysisSuccess)
+                {
+                    Console.WriteLine($"Análise de dados concluída com sucesso para WAVY {wavyId}");
+                    
+                    // After successful analysis, we could send a confirmation message
+                    // to another service if needed, similar to how AggregatorServer
+                    // sends data to OceanServer after preprocessing
+                }
+                else
+                {
+                    Console.WriteLine($"Falha na análise de dados para WAVY {wavyId}");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine($"Falha na análise de dados para WAVY {wavyId}");
+                Console.WriteLine($"Erro ao tentar analisar dados: {ex.Message}");
+                Console.WriteLine("Os dados foram salvos, mas a análise não pôde ser realizada.");
             }
 
             // Limpar linhas em branco do ficheiro CSV
@@ -160,11 +168,17 @@ class TCPServer
             httpClientHandler.ServerCertificateCustomValidationCallback = 
                 HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
             
-            var httpClient = new HttpClient(httpClientHandler);
+            // Set a timeout to avoid hanging
+            var httpClient = new HttpClient(httpClientHandler)
+            {
+                Timeout = TimeSpan.FromSeconds(10)
+            };
             
             // Connect to the DataAnalyserService
             // Make sure this URL matches the actual URL where RPC_DataAnalyserService is running
             var channelOptions = new GrpcChannelOptions { HttpClient = httpClient };
+            
+            Console.WriteLine("Tentando conectar ao serviço RPC_DataAnalyserService...");
             using var channel = GrpcChannel.ForAddress("https://localhost:7038", channelOptions);
             var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
             
@@ -213,10 +227,24 @@ class TCPServer
                     Console.WriteLine("Chamando serviço RPC AnalyzeDataAsync...");
                     
                     // Set a deadline for the RPC call
-                    var deadline = DateTime.UtcNow.AddSeconds(30);
+                    var deadline = DateTime.UtcNow.AddSeconds(10); // Shorter timeout
                     var callOptions = new CallOptions(deadline: deadline);
                     
-                    var response = await client.AnalyzeDataAsync(request, callOptions);
+                    // Create a task that will complete after the timeout
+                    var timeoutTask = Task.Delay(TimeSpan.FromSeconds(15));
+                    
+                    // Create the RPC call task
+                    var rpcTask = client.AnalyzeDataAsync(request, callOptions);
+                    
+                    // Wait for either the RPC call to complete or the timeout to occur
+                    var completedTask = await Task.WhenAny(rpcTask, timeoutTask);
+                    
+                    if (completedTask == timeoutTask)
+                    {
+                        throw new TimeoutException("A chamada RPC excedeu o tempo limite.");
+                    }
+                    
+                    var response = await rpcTask;
                     
                     Console.WriteLine("Resposta do serviço RPC recebida.");
                     
@@ -354,9 +382,14 @@ class TCPServer
             httpClientHandler.ServerCertificateCustomValidationCallback = 
                 HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
             
-            var httpClient = new HttpClient(httpClientHandler);
+            // Set a short timeout to avoid hanging
+            var httpClient = new HttpClient(httpClientHandler)
+            {
+                Timeout = TimeSpan.FromSeconds(3)
+            };
             
             // Try to connect to the RPC service
+            Console.WriteLine("Verificando disponibilidade do serviço RPC_DataAnalyserService...");
             var response = await httpClient.GetAsync("https://localhost:7038");
             Console.WriteLine($"RPC service status: {response.StatusCode}");
             
@@ -383,16 +416,25 @@ class TCPServer
 
         DeleteDirectory("ReceivedData");
         
-        // Verificar se o serviço RPC está disponível
-        bool rpcAvailable = VerifyRpcServiceAvailability().GetAwaiter().GetResult();
-        if (!rpcAvailable)
+        try
         {
-            Console.WriteLine("AVISO: O serviço RPC_DataAnalyserService não parece estar disponível.");
-            Console.WriteLine("Certifique-se de que o serviço está em execução na porta 7038.");
+            // Verificar se o serviço RPC está disponível
+            bool rpcAvailable = VerifyRpcServiceAvailability().GetAwaiter().GetResult();
+            if (!rpcAvailable)
+            {
+                Console.WriteLine("AVISO: O serviço RPC_DataAnalyserService não parece estar disponível.");
+                Console.WriteLine("Certifique-se de que o serviço está em execução na porta 7038.");
+                Console.WriteLine("O OceanServer continuará funcionando, mas a análise de dados não será realizada.");
+            }
+            else
+            {
+                Console.WriteLine("Serviço RPC_DataAnalyserService está disponível.");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            Console.WriteLine("Serviço RPC_DataAnalyserService está disponível.");
+            Console.WriteLine($"Erro ao verificar disponibilidade do serviço RPC: {ex.Message}");
+            Console.WriteLine("O OceanServer continuará funcionando, mas a análise de dados pode não funcionar corretamente.");
         }
 
         // Iniciar dois servidores em threads separadas
