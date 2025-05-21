@@ -12,31 +12,31 @@ namespace WavyClient
         const int RETRY_DELAY_MS = 5000; // Tempo de espera entre tentativas (em milissegundos)
         const string RABBITMQ_HOST = "localhost"; // Host do RabbitMQ
         const string EXCHANGE_NAME = "wavy_exchange"; // Nome da exchange
-        static Mutex mutex = new Mutex(); // Mutex para sincronizar acesso ao ficheiro de progresso
-        static ManualResetEvent[] wavyCompletionEvents;
+        static readonly Mutex mutex = new Mutex(); // Mutex para sincronizar acesso ao ficheiro de progresso
+        static ManualResetEvent[]? wavyCompletionEvents; // Array de eventos para controle de conclusão
 
         static void Main(string[] args)
-        {
-            if (args.Length != 1)
+        {            if (args.Length < 4)
             {
-                Console.WriteLine("Uso: Wavy <RabbitMQ Host>");
-                Console.WriteLine("Usando localhost como padrão para RabbitMQ");
+                Console.WriteLine("Uso: Wavy <RabbitMQ Host> <Port1> <Port2> <Port3>");
+                Console.WriteLine("Usando valores padrão: localhost 4000 4001 4002");
             }
 
             string rabbitMqHost = args.Length > 0 ? args[0] : RABBITMQ_HOST;
+            int[] ports = args.Length >= 4 
+                ? new[] { int.Parse(args[1]), int.Parse(args[2]), int.Parse(args[3]) }
+                : new[] { 4000, 4001, 4002 };
 
             // Criar eventos para sinalizar a conclusão de cada WAVY
             wavyCompletionEvents = new ManualResetEvent[4];
             for (int i = 0; i < wavyCompletionEvents.Length; i++)
             {
                 wavyCompletionEvents[i] = new ManualResetEvent(false);
-            }
-
-            // Criar threads para executar as WAVYs simultaneamente
-            Thread wavy1 = new Thread(() => ExecuteWavy("001", rabbitMqHost, "buoy - Cópia.csv", 0));
-            Thread wavy2 = new Thread(() => ExecuteWavy("002", rabbitMqHost, "buoy - Cópia (2).csv", 1));
-            Thread wavy3 = new Thread(() => ExecuteWavy("003", rabbitMqHost, "buoy - Cópia (3).csv", 2));
-            Thread wavy4 = new Thread(() => ExecuteWavy("004", rabbitMqHost, "buoy - Cópia (4).csv", 3));
+            }            // Criar threads para executar as WAVYs simultaneamente
+            Thread wavy1 = new Thread(() => ExecuteWavy("001", rabbitMqHost, ports, "buoy - Cópia.csv", 0));
+            Thread wavy2 = new Thread(() => ExecuteWavy("002", rabbitMqHost, ports, "buoy - Cópia (2).csv", 1));
+            Thread wavy3 = new Thread(() => ExecuteWavy("003", rabbitMqHost, ports, "buoy - Cópia (3).csv", 2));
+            Thread wavy4 = new Thread(() => ExecuteWavy("004", rabbitMqHost, ports, "buoy - Cópia (4).csv", 3));
 
             // Iniciar as threads
             wavy1.Start();
@@ -50,16 +50,16 @@ namespace WavyClient
             Console.WriteLine("Todas as WAVYs foram concluídas.");
         }
 
-        static void ExecuteWavy(string id, string rabbitMqHost, string filename, int eventIndex)
+        static void ExecuteWavy(string id, string rabbitMqHost, int[] ports, string filename, int eventIndex)
         {
-            bool wavySuccess = false; // Variável local para controlar o estado da WAVY
-            string progressFile = $"progress_WAVY{id}.txt"; // Arquivo de progresso específico para cada WAVY
+            bool wavySuccess = false;
+            string progressFile = $"progress_WAVY{id}.txt";
 
             // Tentar executar a WAVY até 3 vezes, se necessário
             for (int attempt = 1; attempt <= 3 && !wavySuccess; attempt++)
             {
                 Console.WriteLine($"Iniciando WAVY{id}, tentativa {attempt}...");
-                wavySuccess = StartWavy(id, rabbitMqHost, filename, progressFile);
+                wavySuccess = StartWavy(id, rabbitMqHost, ports, filename, progressFile);
 
                 if (wavySuccess)
                 {
@@ -87,13 +87,15 @@ namespace WavyClient
             }
 
             // Sinalizar que esta WAVY foi concluída
-            wavyCompletionEvents[eventIndex].Set();
+            wavyCompletionEvents?[eventIndex].Set();
         }
 
-        static bool StartWavy(string id, string rabbitMqHost, string filename, string progressFile)
+        static bool StartWavy(string id, string rabbitMqHost, int[] ports, string filename, string progressFile)
         {
             string wavyId = "WAVY" + id;
-            RabbitMQService rabbitMqService = null;
+            RabbitMQService? currentService = null;
+            AutoResetEvent waitHandle = new AutoResetEvent(false);
+            string? currentResponse = null;
 
             try
             {
@@ -101,132 +103,135 @@ namespace WavyClient
                 int lastProcessedLine = LoadProgress(progressFile);
                 Console.WriteLine($"Última linha processada para {wavyId}: {lastProcessedLine}");
 
-                // Inicializar o serviço RabbitMQ
-                rabbitMqService = new RabbitMQService(rabbitMqHost, EXCHANGE_NAME, wavyId);
-                
-                // Configurar o handler para mensagens recebidas
-                AutoResetEvent responseReceived = new AutoResetEvent(false);
-                string lastResponse = null;
-                
-                rabbitMqService.OnMessageReceived += (message) =>
-                {
-                    Console.WriteLine($"AGREGADOR para {wavyId}: {message.MessageType} - {message.Data}");
-                    lastResponse = message.MessageType;
-                    responseReceived.Set();
-                };
+                // Tentar conectar em diferentes portas
+                bool connected = false;
 
-                // Enviar mensagem HELLO
-                var helloMessage = new WavyMessage(wavyId, "HELLO", "");
-                rabbitMqService.PublishMessage(helloMessage);
-                
-                // Aguardar resposta do agregador
-                if (!responseReceived.WaitOne(10000))
+                foreach (int port in ports)
                 {
-                    Console.WriteLine($"{wavyId}: Timeout aguardando resposta do agregador.");
-                    return false;
-                }
-
-                if (lastResponse == "DENIED")
-                {
-                    Console.WriteLine($"{wavyId}: Conexão negada pelo agregador.");
-                    return false;
-                }
-
-                if (lastResponse == "ACK")
-                {
-                    // Ler dados do ficheiro CSV e enviá-los aos poucos
-                    if (File.Exists(filename))
+                    try
                     {
-                        string[] lines = File.ReadAllLines(filename);
-                        for (int i = lastProcessedLine; i < lines.Length; i++)
+                        currentService?.Dispose();
+                        currentService = new RabbitMQService(rabbitMqHost, EXCHANGE_NAME, wavyId, port);
+                        
+                        if (currentService != null)
                         {
-                            string line = lines[i];
+                            // Resetar estado para nova tentativa
+                            waitHandle.Reset();
+                            currentResponse = null;
 
-                            if (!string.IsNullOrWhiteSpace(line))
+                            // Configurar o handler para mensagens recebidas
+                            currentService.OnMessageReceived += (message) =>
                             {
-                                bool success = false;
-                                int retryCount = 0;
+                                Console.WriteLine($"AGREGADOR para {wavyId}: {message.MessageType} - {message.Data}");
+                                currentResponse = message.MessageType;
+                                waitHandle.Set();
+                            };
 
-                                while (!success && retryCount < MAX_RETRIES)
-                                {
-                                    try
-                                    {
-                                        // Resetar o evento para aguardar nova resposta
-                                        responseReceived.Reset();
-                                        lastResponse = null;
-                                        
-                                        // Enviar dados
-                                        var dataMessage = new WavyMessage(wavyId, "DATA_CSV", line);
-                                        rabbitMqService.PublishMessage(dataMessage);
+                            // Enviar mensagem HELLO
+                            var initMessage = new WavyMessage(wavyId, "HELLO", "");
+                            currentService.PublishMessage(initMessage);
+                            
+                            // Aguardar resposta do agregador
+                            if (!waitHandle.WaitOne(5000)) // Reduzindo o timeout para 5 segundos
+                            {
+                                Console.WriteLine($"{wavyId}: Timeout aguardando resposta do agregador na porta {port}.");
+                                continue; // Tentar próxima porta
+                            }
 
-                                        // Aguardar resposta
-                                        if (!responseReceived.WaitOne(10000))
-                                        {
-                                            throw new TimeoutException("Timeout aguardando resposta do agregador.");
-                                        }
+                            if (currentResponse == "DENIED")
+                            {
+                                Console.WriteLine($"{wavyId}: Conexão negada pelo agregador na porta {port}.");
+                                continue; // Tentar próxima porta
+                            }
 
-                                        if (lastResponse == "ACK")
-                                        {
-                                            success = true;
-
-                                            // Guardar progresso após envio bem-sucedido
-                                            mutex.WaitOne();
-                                            try
-                                            {
-                                                SaveProgress(progressFile, i);
-                                            }
-                                            finally
-                                            {
-                                                mutex.ReleaseMutex();
-                                            }
-                                        }
-                                        else
-                                        {
-                                            Console.WriteLine($"{wavyId}: Resposta inesperada do agregador: {lastResponse}. Tentando novamente...");
-                                            retryCount++;
-                                        }
-                                    }
-                                    catch (Exception e)
-                                    {
-                                        retryCount++;
-                                        Console.WriteLine($"{wavyId}: Erro durante o envio: {e.Message}. Tentativa {retryCount}/{MAX_RETRIES}");
-                                        Thread.Sleep(RETRY_DELAY_MS);
-                                    }
-                                }
-
-                                if (!success)
-                                {
-                                    Console.WriteLine($"{wavyId}: Falha ao enviar dados após {MAX_RETRIES} tentativas.");
-                                    return false;
-                                }
-
-                                Thread.Sleep(2000); // Pequeno atraso entre envios (2 segundos)
+                            if (currentResponse == "ACK")
+                            {
+                                connected = true;
+                                Console.WriteLine($"{wavyId}: Conectado com sucesso ao agregador na porta {port}");
+                                break;
                             }
                         }
-                        
-                        // Enviar mensagem QUIT
-                        var quitMessage = new WavyMessage(wavyId, "QUIT", "");
-                        rabbitMqService.PublishMessage(quitMessage);
-                        
-                        return true;
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        Console.WriteLine($"{wavyId}: Erro: Ficheiro não encontrado: {filename}");
-                        return false;
+                        Console.WriteLine($"{wavyId}: Falha ao conectar na porta {port}: {ex.Message}");
                     }
                 }
-                
-                return false;
+
+                if (!connected || currentService == null)
+                {
+                    Console.WriteLine($"{wavyId}: Não foi possível conectar em nenhuma porta disponível.");
+                    return false;
+                }
+
+                // Ler dados do ficheiro CSV e enviá-los aos poucos
+                if (File.Exists(filename))
+                {
+                    string[] lines = File.ReadAllLines(filename);
+                    for (int i = lastProcessedLine; i < lines.Length; i++)
+                    {
+                        string line = lines[i];
+                        if (!string.IsNullOrWhiteSpace(line))
+                        {
+                            bool success = false;
+                            int retryCount = 0;
+
+                            while (!success && retryCount < MAX_RETRIES)
+                            {
+                                try
+                                {
+                                    waitHandle.Reset();
+                                    currentResponse = null;
+
+                                    var dataMessage = new WavyMessage(wavyId, "DATA_CSV", line);
+                                    currentService.PublishMessage(dataMessage);
+
+                                    if (!waitHandle.WaitOne(10000))
+                                    {
+                                        throw new TimeoutException("Timeout aguardando resposta do agregador.");
+                                    }
+
+                                    if (currentResponse == "ACK")
+                                    {
+                                        success = true;
+                                        SaveProgress(progressFile, i + 1);
+                                    }
+                                    else
+                                    {
+                                        throw new Exception($"Resposta inesperada do agregador: {currentResponse}");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    retryCount++;
+                                    Console.WriteLine($"{wavyId}: Erro ao enviar dados (tentativa {retryCount}): {ex.Message}");
+                                    Thread.Sleep(RETRY_DELAY_MS);
+                                }
+                            }
+
+                            if (!success)
+                            {
+                                Console.WriteLine($"{wavyId}: Falha ao enviar dados após {MAX_RETRIES} tentativas.");
+                                return false;
+                            }
+                        }
+                    }
+                    return true;
+                }
+                else
+                {
+                    Console.WriteLine($"{wavyId}: Arquivo não encontrado: {filename}");
+                    return false;
+                }
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                Console.WriteLine($"{wavyId}: Erro crítico: {e.Message}");
+                Console.WriteLine($"{wavyId}: Erro geral: {ex.Message}");
                 return false;
             }
             finally
             {
-                rabbitMqService?.Dispose();
+                currentService?.Dispose();
             }
         }
 

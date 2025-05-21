@@ -1,4 +1,4 @@
-﻿﻿﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Data.SQLite;
@@ -63,21 +63,28 @@ namespace AggregatorServer
                 TcpClient serverClient = new TcpClient(IpServer, selectedServerPort);
                 Console.WriteLine($"[{aggregatorId}] Conectado ao SERVIDOR na porta {selectedServerPort}!");
 
-                // Inicializar o serviço RabbitMQ
-                var rabbitMqService = new RabbitMQService(rabbitMqHost, EXCHANGE_NAME, aggregatorId);
-                rabbitMqServices.TryAdd(aggregatorId, rabbitMqService);
-                
-                // Configurar o handler para mensagens recebidas
-                rabbitMqService.OnMessageReceived += (message) => 
+                // Inicializar o serviço RabbitMQ com a porta específica do agregador
+                var rabbitMqService = new RabbitMQService(rabbitMqHost, EXCHANGE_NAME, aggregatorId, aggregatorPort);
+                if (rabbitMqService != null)
                 {
-                    ProcessWavyMessage(message, aggregatorId, rabbitMqService);
-                };
+                    rabbitMqServices.TryAdd(aggregatorId, rabbitMqService);
+                    
+                    // Configurar o handler para mensagens recebidas
+                    rabbitMqService.OnMessageReceived += (message) => 
+                    {
+                        ProcessWavyMessage(message, aggregatorId, rabbitMqService);
+                    };
 
-                Console.WriteLine($"[{aggregatorId}] Serviço RabbitMQ inicializado e aguardando mensagens...");
-                
-                // Manter o agregador em execução
-                var waitHandle = new ManualResetEvent(false);
-                waitHandle.WaitOne();
+                    Console.WriteLine($"[{aggregatorId}] Serviço RabbitMQ inicializado e aguardando mensagens na porta {aggregatorPort}...");
+                    
+                    // Manter o agregador em execução
+                    var waitHandle = new ManualResetEvent(false);
+                    waitHandle.WaitOne();
+                }
+                else
+                {
+                    throw new Exception("Falha ao inicializar o serviço RabbitMQ");
+                }
             }
             catch (Exception ex)
             {

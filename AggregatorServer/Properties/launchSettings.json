@@ -1,8 +1,7 @@
 {
-  "profiles": {
-    "AggregatorServer": {
+  "profiles": {    "AggregatorServer": {
       "commandName": "Project",
-      "commandLineArgs": "26.63.92.110 5000 5001"
+      "commandLineArgs": "localhost 5000 5001"
     },
     "WSL": {
       "commandName": "WSL2",

@@ -1,8 +1,7 @@
 {
-  "profiles": {
-    "WavyClient": {
+  "profiles": {    "WavyClient": {
       "commandName": "Project",
-      "commandLineArgs": "26.63.92.110 4000 4001 4002"
+      "commandLineArgs": "localhost 4000 4001 4002"
     },
     "WSL": {
       "commandName": "WSL2",

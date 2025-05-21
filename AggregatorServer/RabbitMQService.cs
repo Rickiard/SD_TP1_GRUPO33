@@ -15,21 +15,23 @@ namespace AggregatorServer
         private readonly string _hostName;
         private readonly string _exchangeName;
         private readonly string _aggregatorId;
+        private readonly int _port;
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly ConcurrentDictionary<string, string> _activeWavys = new ConcurrentDictionary<string, string>();
-        private TcpListener _listener;
-        private Thread _acceptThread;
+        private TcpListener? _listener;
+        private Thread? _acceptThread;
         private readonly List<ClientHandler> _clients = new List<ClientHandler>();
         private readonly object _clientsLock = new object();
 
         public delegate void MessageReceivedHandler(WavyMessage message);
-        public event MessageReceivedHandler OnMessageReceived;
+        public event MessageReceivedHandler? OnMessageReceived;
 
-        public RabbitMQService(string hostName, string exchangeName, string aggregatorId)
+        public RabbitMQService(string hostName, string exchangeName, string aggregatorId, int port)
         {
             _hostName = hostName;
             _exchangeName = exchangeName;
             _aggregatorId = aggregatorId;
+            _port = port;
             _cancellationTokenSource = new CancellationTokenSource();
             Initialize();
         }
@@ -37,11 +39,9 @@ namespace AggregatorServer
         private void Initialize()
         {
             try
-            {
-                // For now, we'll use a direct TCP server instead of RabbitMQ
+            {                // For now, we'll use a direct TCP server instead of RabbitMQ
                 // In a real implementation, this would use RabbitMQ client
-                IPAddress ipAddress = IPAddress.Parse("127.0.0.1");
-                _listener = new TcpListener(ipAddress, 5672); // Default RabbitMQ port
+                _listener = new TcpListener(IPAddress.Any, _port);
                 _listener.Start();
 
                 // Start a thread to accept client connections
@@ -49,7 +49,7 @@ namespace AggregatorServer
                 _acceptThread.IsBackground = true;
                 _acceptThread.Start();
 
-                Console.WriteLine($"Server initialized for Aggregator {_aggregatorId}");
+                Console.WriteLine($"Server initialized for Aggregator {_aggregatorId} on port {_port}");
             }
             catch (Exception ex)
             {
@@ -62,7 +62,7 @@ namespace AggregatorServer
         {
             try
             {
-                while (!_cancellationTokenSource.IsCancellationRequested)
+                while (!_cancellationTokenSource.IsCancellationRequested && _listener != null)
                 {
                     TcpClient client = _listener.AcceptTcpClient();
                     var handler = new ClientHandler(client, this);
@@ -168,7 +168,7 @@ namespace AggregatorServer
             private readonly Thread _receiveThread;
             private readonly CancellationTokenSource _cts = new CancellationTokenSource();
             
-            public string WavyId { get; set; }
+            public string? WavyId { get; set; }
             
             public ClientHandler(TcpClient client, RabbitMQService service)
             {

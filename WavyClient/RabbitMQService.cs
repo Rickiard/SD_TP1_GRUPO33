@@ -13,20 +13,22 @@ namespace WavyClient
         private readonly string _hostName;
         private readonly string _exchangeName;
         private readonly string _wavyId;
+        private readonly int _port;
         private readonly CancellationTokenSource _cancellationTokenSource;
-        private TcpClient _client;
-        private NetworkStream _stream;
-        private Thread _receiveThread;
+        private TcpClient? _client;
+        private NetworkStream? _stream;
+        private Thread? _receiveThread;
         private bool _isConnected;
 
         public delegate void MessageReceivedHandler(WavyMessage message);
-        public event MessageReceivedHandler OnMessageReceived;
+        public event MessageReceivedHandler? OnMessageReceived;
 
-        public RabbitMQService(string hostName, string exchangeName, string wavyId)
+        public RabbitMQService(string hostName, string exchangeName, string wavyId, int port)
         {
             _hostName = hostName;
             _exchangeName = exchangeName;
             _wavyId = wavyId;
+            _port = port;
             _cancellationTokenSource = new CancellationTokenSource();
             Initialize();
         }
@@ -37,7 +39,7 @@ namespace WavyClient
             {
                 // For now, we'll use a direct TCP connection instead of RabbitMQ
                 // In a real implementation, this would use RabbitMQ client
-                _client = new TcpClient(_hostName, 5672); // Default RabbitMQ port
+                _client = new TcpClient(_hostName, _port);
                 _stream = _client.GetStream();
                 _isConnected = true;
 
@@ -46,7 +48,7 @@ namespace WavyClient
                 _receiveThread.IsBackground = true;
                 _receiveThread.Start();
 
-                Console.WriteLine($"Connection initialized for WAVY {_wavyId}");
+                Console.WriteLine($"Connection initialized for WAVY {_wavyId} on port {_port}");
             }
             catch (Exception ex)
             {
@@ -60,7 +62,7 @@ namespace WavyClient
             try
             {
                 byte[] buffer = new byte[4096];
-                while (!_cancellationTokenSource.IsCancellationRequested && _isConnected)
+                while (!_cancellationTokenSource.IsCancellationRequested && _isConnected && _stream != null)
                 {
                     if (_stream.DataAvailable)
                     {
@@ -85,7 +87,7 @@ namespace WavyClient
         {
             try
             {
-                if (!_isConnected)
+                if (!_isConnected || _stream == null)
                 {
                     Console.WriteLine("Cannot send message: not connected");
                     return;
