@@ -1,0 +1,225 @@
+﻿@model List<OceanData>
+@{
+    ViewData["Title"] = "Ocean Dashboard";
+}
+
+<div class="container-fluid">
+    <div class="row mb-5">
+        <div class="col-12">
+            <h1 class="display-4 text-center">Ocean Dashboard</h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Altura das Ondas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="waveHeightChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Direção das Ondas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="waveDirectionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Temperatura da Água</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="temperatureChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Período das Ondas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="wavePeriodChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Dados Recentes</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Horário</th>
+                                    <th>Local</th>
+                                    <th>Altura (m)</th>
+                                    <th>Período (s)</th>
+                                    <th>Direção (°)</th>
+                                    <th>Temp. (°C)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var data in Model.Take(10))
+                                {
+                                    <tr>
+                                        <td>@data.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                        <td>@data.Location</td>
+                                        <td>@data.WaveHeight.ToString("F2")</td>
+                                        <td>@data.WavePeriod.ToString("F2")</td>
+                                        <td>@data.WaveDirection.ToString("F2")</td>
+                                        <td>@data.Temperature.ToString("F2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const timestamps = @Json.Serialize(Model.Select(d => d.Timestamp.ToString("HH:mm:ss")));
+        const waveHeights = @Json.Serialize(Model.Select(d => d.WaveHeight));
+        const waveDirections = @Json.Serialize(Model.Select(d => d.WaveDirection));
+        const temperatures = @Json.Serialize(Model.Select(d => d.Temperature));
+        const wavePeriods = @Json.Serialize(Model.Select(d => d.WavePeriod));
+
+        // Configuração comum para os gráficos de linha
+        const commonLineOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        font: {
+                            size: 14
+                        }
+                    }
+                },
+                x: {
+                    ticks: {
+                        font: {
+                            size: 14
+                        },
+                        maxRotation: 45,
+                        minRotation: 45
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: {
+                        font: {
+                            size: 14
+                        }
+                    }
+                }
+            }
+        };
+
+        // Wave Height Chart
+        new Chart(document.getElementById('waveHeightChart'), {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: [{
+                    label: 'Altura das Ondas (m)',
+                    data: waveHeights,
+                    borderColor: '#4e73df',
+                    tension: 0.1,
+                    borderWidth: 3,
+                    pointRadius: 5
+                }]
+            },
+            options: commonLineOptions
+        });
+
+        // Wave Direction Chart
+        new Chart(document.getElementById('waveDirectionChart'), {
+            type: 'polarArea',
+            data: {
+                labels: timestamps,
+                datasets: [{
+                    label: 'Direção das Ondas (°)',
+                    data: waveDirections,
+                    backgroundColor: Array(waveDirections.length).fill().map(() => 
+                        `rgba(${Math.random() * 255},${Math.random() * 255},${Math.random() * 255},0.5)`),
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+
+        // Temperature Chart
+        new Chart(document.getElementById('temperatureChart'), {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: [{
+                    label: 'Temperatura (°C)',
+                    data: temperatures,
+                    borderColor: '#1cc88a',
+                    tension: 0.1,
+                    borderWidth: 3,
+                    pointRadius: 5
+                }]
+            },
+            options: commonLineOptions
+        });
+
+        // Wave Period Chart
+        new Chart(document.getElementById('wavePeriodChart'), {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: [{
+                    label: 'Período das Ondas (s)',
+                    data: wavePeriods,
+                    borderColor: '#f6c23e',
+                    tension: 0.1,
+                    borderWidth: 3,
+                    pointRadius: 5
+                }]
+            },
+            options: commonLineOptions
+        });
+    </script>
+}

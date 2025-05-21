@@ -1,0 +1,98 @@
+html {
+  font-size: 16px;
+  position: relative;
+  min-height: 100%;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 18px;
+  }
+}
+
+body {
+  margin-bottom: 60px;
+  background-color: #f8f9fc;
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+}
+
+.card {
+  transition: transform 0.2s;
+  box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+  margin-bottom: 2rem;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+}
+
+.chart-container {
+  min-height: 400px;  /* Aumentado de 300px para 400px */
+  padding: 1rem;
+}
+
+.table-responsive {
+  max-height: 500px;  /* Aumentado de 400px para 500px */
+  overflow-y: auto;
+}
+
+.table {
+  font-size: 1.1rem;  /* Aumentando o tamanho da fonte da tabela */
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
+  font-size: 1.2rem;  /* Aumentando o tamanho do cabeçalho da tabela */
+  padding: 1rem;  /* Aumentando o padding */
+}
+
+.table td {
+  padding: 1rem;  /* Aumentando o padding das células */
+}
+
+.display-4 {
+  color: #2c3e50;
+  font-weight: 300;
+  font-size: 2.5rem;  /* Aumentando o tamanho do título */
+  margin-bottom: 2rem;
+}
+
+.navbar-brand {
+  font-size: 1.5rem;  /* Aumentando o tamanho da marca */
+}
+
+.navbar-brand i {
+  color: #3498db;
+  font-size: 1.8rem;  /* Aumentando o tamanho do ícone */
+}
+
+.card-header {
+  background-color: #f8f9fc;
+  border-bottom: 1px solid #e3e6f0;
+  padding: 1.25rem;  /* Aumentando o padding do cabeçalho do card */
+}
+
+.card-header h5 {
+  font-size: 1.3rem;  /* Aumentando o tamanho do título do card */
+  margin-bottom: 0;
+}
+
+.card-body {
+  padding: 1.5rem;  /* Aumentando o padding do corpo do card */
+}
+
+.footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  white-space: nowrap;
+  line-height: 60px;
+  background-color: white;
+  font-size: 1.1rem;  /* Aumentando o tamanho da fonte do footer */
+}
