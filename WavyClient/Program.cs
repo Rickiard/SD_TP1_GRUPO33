@@ -200,6 +200,8 @@ namespace WavyClient
                                     {
                                         throw new Exception($"Resposta inesperada do agregador: {currentResponse}");
                                     }
+
+                                    Thread.Sleep(200); // Aguardar 1 segundo entre envios
                                 }
                                 catch (Exception ex)
                                 {
