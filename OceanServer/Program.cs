@@ -11,6 +11,7 @@ using Grpc.Net.Client;
 using RPC_DataAnalyserServiceClient;
 using System.Net.Http;
 using Grpc.Core;
+using System.Globalization;
 
 class TCPServer
 {
@@ -192,7 +193,7 @@ class TCPServer
             string[] lines = csvData.Split('\n', StringSplitOptions.RemoveEmptyEntries);
             foreach (var line in lines)
             {
-                string[] values = line.Split(',');
+                string[] values = line.Split(';');
                 if (values.Length >= 4)
                 {
                     try
@@ -200,7 +201,7 @@ class TCPServer
                         var sensorData = new RPC_DataAnalyserServiceClient.SensorData
                         {
                             SensorId = values[0],
-                            Value = double.Parse(values[1]),
+                            Value = double.Parse(values[1], CultureInfo.InvariantCulture),
                             Timestamp = values[2],
                             Unit = values[3]
                         };
