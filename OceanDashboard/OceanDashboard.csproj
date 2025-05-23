@@ -5,10 +5,19 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
-
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.31.0" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.72.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.5" />
     <PackageReference Include="System.Data.SQLite" Version="1.0.119" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Protobuf Include="Protos\analysis.proto" GrpcServices="Client" />
   </ItemGroup>
 
 </Project>

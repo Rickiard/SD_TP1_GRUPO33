@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -17,11 +17,15 @@ class TCPServer
 {
     private static Mutex mutex = new Mutex();
     private const string DataDirectory = "ReceivedData";
+    // Store the successful RPC service URL for later use
+    private static string _rpcServiceUrl = "http://localhost:5038"; // Default URL
 
-    static void HandleClient(object obj)
+    static void HandleClient(object? obj)
     {
+        if (obj == null) return;
+        
         TcpClient client = (TcpClient)obj;
-        NetworkStream stream = null;
+        NetworkStream? stream = null;
 
         try
         {
@@ -43,12 +47,17 @@ class TCPServer
                     mutex.WaitOne();
                     hasMutex = true;
 
-                    Console.WriteLine($"Recebido de {((IPEndPoint)client.Client.RemoteEndPoint).Address}: {message}");
-
+                    var endpoint = client.Client.RemoteEndPoint as IPEndPoint;
+                    if (endpoint != null)
+                    {
+                        Console.WriteLine($"Recebido de {endpoint.Address}: {message}");
+                    }
+                    
                     if (message.StartsWith("DATA_CSV"))
                     {
-                        ProcessCSVData(message);
-                        stream.Write(okResponse, 0, okResponse.Length); // Confirmação de receção
+                        // Use Task.Run para não bloquear a thread principal de recepção
+                        Task.Run(() => ProcessCSVData(message));
+                        stream.Write(okResponse, 0, okResponse.Length); // Confirmação de receção imediata
                     }
                     else if (message == "QUIT")
                     {
@@ -66,11 +75,11 @@ class TCPServer
                 }
             }
         }
-        catch (IOException ex)
+        catch (IOException)
         {
             //Console.WriteLine($"Erro de E/S: {ex.Message}");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             //Console.WriteLine($"Erro inesperado: {ex.Message}");
         }
@@ -79,9 +88,7 @@ class TCPServer
             client?.Close();
             stream?.Close();
         }
-    }
-
-    static async void ProcessCSVData(string message)
+    }    static async void ProcessCSVData(string message)
     {
         string[] parts = message.Split(':', 3); // Dividir apenas em três partes
         if (parts.Length < 3) 
@@ -122,6 +129,13 @@ class TCPServer
             try
             {
                 Console.WriteLine($"Iniciando análise de dados para WAVY {wavyId}...");
+                // Release mutex before the RPC call which can take a long time
+                if (hasMutex)
+                {
+                    mutex.ReleaseMutex();
+                    hasMutex = false;
+                }
+                
                 bool analysisSuccess = await AnalyzeDataWithRPC(wavyId, csvData);
                 
                 if (analysisSuccess)
@@ -143,8 +157,26 @@ class TCPServer
                 Console.WriteLine("Os dados foram salvos, mas a análise não pôde ser realizada.");
             }
 
-            // Limpar linhas em branco do ficheiro CSV
-            CleanEmptyLinesFromCSV(filePath);
+            // Re-acquire the mutex for file cleanup if needed
+            bool cleanupMutex = false;
+            try
+            {
+                if (!hasMutex)
+                {
+                    mutex.WaitOne();
+                    cleanupMutex = true;
+                }
+                
+                // Limpar linhas em branco do ficheiro CSV
+                CleanEmptyLinesFromCSV(filePath);
+            }
+            finally
+            {
+                if (cleanupMutex)
+                {
+                    mutex.ReleaseMutex();
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -159,127 +191,212 @@ class TCPServer
             }
         }
     }
-    
-    static async Task<bool> AnalyzeDataWithRPC(string wavyId, string csvData)
+
+    static void CleanEmptyLinesFromCSV(string filePath)
     {
         try
         {
-            // Configure the HttpClient to ignore certificate validation for development
-            var httpClientHandler = new HttpClientHandler();
-            httpClientHandler.ServerCertificateCustomValidationCallback = 
-                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-            
-            // Set a timeout to avoid hanging
-            var httpClient = new HttpClient(httpClientHandler)
+            if (!File.Exists(filePath))
             {
-                Timeout = TimeSpan.FromSeconds(10)
-            };
-            
-            // Set environment variable to allow HTTP/2 without TLS
-            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-            
-            // Connect to the DataAnalyserService
-            // Make sure this URL matches the actual URL where RPC_DataAnalyserService is running
-            var channelOptions = new GrpcChannelOptions { HttpClient = httpClient };
-            
-            Console.WriteLine($"Tentando conectar ao serviço RPC_DataAnalyserService em {_rpcServiceUrl}...");
-            // Use the URL that was successful in the availability check
-            using var channel = GrpcChannel.ForAddress(_rpcServiceUrl, channelOptions);
-            var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
-            
-            // Parse the CSV data to create sensor data points
-            var dataPoints = new List<RPC_DataAnalyserServiceClient.SensorData>();
-            
-            string[] lines = csvData.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            foreach (var line in lines)
-            {
-                string[] values = line.Split(';');
-                if (values.Length >= 4)
-                {
-                    try
-                    {
-                        var sensorData = new RPC_DataAnalyserServiceClient.SensorData
-                        {
-                            SensorId = values[0],
-                            Value = double.Parse(values[1], CultureInfo.InvariantCulture),
-                            Timestamp = values[2],
-                            Unit = values[3]
-                        };
-                        dataPoints.Add(sensorData);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Erro ao processar linha CSV: {ex.Message}");
-                    }
-                }
+                Console.WriteLine($"Arquivo {filePath} não encontrado.");
+                return;
             }
+
+            // Ler todas as linhas do ficheiro, ignorando as linhas em branco
+            var nonEmptyLines = File.ReadAllLines(filePath)
+                                    .Where(line => !string.IsNullOrWhiteSpace(line))
+                                    .ToList();
+
+            // Reescrever o ficheiro apenas com as linhas não vazias
+            File.WriteAllLines(filePath, nonEmptyLines);
+
+            Console.WriteLine($"Linhas em branco removidas do ficheiro {filePath}.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao limpar linhas em branco do ficheiro {filePath}: {ex.Message}");
+        }
+    }
+
+    static async Task<bool> AnalyzeDataWithRPC(string wavyId, string csvData)
+    {        
+        int connectionRetries = 0;
+        const int maxConnectionRetries = 3;
             
-            if (dataPoints.Count > 0)
+        while (connectionRetries < maxConnectionRetries)
+        {
+            try
             {
-                // Create the analysis request
-                var request = new RPC_DataAnalyserServiceClient.AnalysisRequest
+                // Configure the HttpClient to ignore certificate validation for development
+                var httpClientHandler = new HttpClientHandler();
+                httpClientHandler.ServerCertificateCustomValidationCallback = 
+                    HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+                    
+                // Set a timeout to avoid hanging
+                var httpClient = new HttpClient(httpClientHandler)
                 {
-                    AnalysisType = "mean",
-                    TimeRange = "1h"
+                    Timeout = TimeSpan.FromSeconds(15) // Aumentando o timeout
                 };
-                request.DataPoints.AddRange(dataPoints);
-                
-                // Call the RPC service
-                Console.WriteLine($"Enviando {dataPoints.Count} pontos de dados para análise...");
-                
+                    
+                // Set environment variable to allow HTTP/2 without TLS
+                AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
+                    
+                // Connect to the DataAnalyserService
+                // Make sure this URL matches the actual URL where RPC_DataAnalyserService is running
+                var channelOptions = new GrpcChannelOptions { HttpClient = httpClient };
+                    
+                Console.WriteLine($"Tentando conectar ao serviço RPC_DataAnalyserService em {_rpcServiceUrl}... (tentativa {connectionRetries + 1} de {maxConnectionRetries})");
+                // Use the URL that was successful in the availability check
+                // Criamos um escopo para o canal e o cliente para garantir que eles sejam fechados após o uso
+                using var channel = GrpcChannel.ForAddress(_rpcServiceUrl, channelOptions);
+                var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
+                // Parse the CSV data to create sensor data points - with better error handling
+                var dataPoints = new List<RPC_DataAnalyserServiceClient.SensorData>();
+            
                 try
                 {
-                    Console.WriteLine("Chamando serviço RPC AnalyzeDataAsync...");
-                    
-                    // Set a deadline for the RPC call
-                    var deadline = DateTime.UtcNow.AddSeconds(10); // Shorter timeout
-                    var callOptions = new CallOptions(deadline: deadline);
-                    
-                    // Call the RPC service
-                    Console.WriteLine("Enviando requisição para o serviço RPC...");
-                    var response = await client.AnalyzeDataAsync(request, callOptions);
-                    
-                    Console.WriteLine("Resposta do serviço RPC recebida.");
-                    
-                    if (response.Success)
+                    string[] lines = csvData.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var line in lines)
                     {
-                        Console.WriteLine($"Análise concluída para WAVY {wavyId}:");
-                        foreach (var stat in response.Statistics)
+                        string[] values = line.Split(';');
+                        if (values.Length >= 4)
                         {
-                            Console.WriteLine($"  {stat.Key}: {stat.Value}");
+                            try
+                            {
+                                var sensorData = new RPC_DataAnalyserServiceClient.SensorData
+                                {
+                                    SensorId = values[0],
+                                    Value = double.Parse(values[1], CultureInfo.InvariantCulture),
+                                    Timestamp = values[2],
+                                    Unit = values[3]
+                                };
+                                dataPoints.Add(sensorData);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Erro ao processar linha CSV: {ex.Message}");
+                                // Continue processando as próximas linhas
+                            }
                         }
-                        
-                        // Store the analysis results in the database
-                        StoreAnalysisResults(wavyId, response.Statistics);
-                        
-                        return true;
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Erro na análise: {response.ErrorMessage}");
-                        return false;
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Erro na chamada RPC: {ex.Message}");
+                    Console.WriteLine($"Erro ao processar dados CSV: {ex.Message}");
+                    // Continuar mesmo com erro para tentar processar pelo menos alguns dados
+                }
+                
+                if (dataPoints.Count > 0)
+                {
+                    // Create the analysis request
+                    var request = new RPC_DataAnalyserServiceClient.AnalysisRequest
+                    {
+                        AnalysisType = "mean",
+                        TimeRange = "1h"
+                    };
+                    request.DataPoints.AddRange(dataPoints);
+
+                    try
+                    {
+                        // Call the RPC service
+                        Console.WriteLine($"Enviando {dataPoints.Count} pontos de dados para análise...");
+                        int retryCount = 0;
+                        const int maxRetries = 3;
+                        bool success = false;
+
+                        while (!success && retryCount < maxRetries)
+                        {
+                            try
+                            {
+                                Console.WriteLine($"Chamando serviço RPC AnalyzeDataAsync... (tentativa {retryCount + 1} de {maxRetries})");
+                                // Set a deadline for the RPC call
+                                var deadline = DateTime.UtcNow.AddSeconds(15); // Aumentando o timeout
+                                var callOptions = new CallOptions(deadline: deadline);
+
+                                // Aguardar um momento antes de chamar o serviço RPC
+                                Console.WriteLine("Aguardando um momento antes de enviar ao serviço RPC...");
+                                await Task.Delay(1500); // Espera 1,5 segundos
+
+                                // Call the RPC service
+                                Console.WriteLine("Enviando requisição para o serviço RPC...");
+                                var response = await client.AnalyzeDataAsync(request, callOptions);
+
+                                Console.WriteLine("Resposta do serviço RPC recebida.");
+
+                                if (response != null && response.Success)
+                                {
+                                    Console.WriteLine($"Análise concluída para WAVY {wavyId}:");
+                                    foreach (var stat in response.Statistics)
+                                    {
+                                        Console.WriteLine($"  {stat.Key}: {stat.Value}");
+                                    }
+
+                                    // Store the analysis results in the database
+                                    StoreAnalysisResults(wavyId, response.Statistics);
+
+                                    success = true;
+                                    return true;
+                                }
+                                else
+                                {
+                                    string errorMsg = response != null ? response.ErrorMessage : "Resposta nula do serviço RPC";
+                                    Console.WriteLine($"Erro na análise: {errorMsg}");
+                                    retryCount++;
+                                    await Task.Delay(2000); // Aguarda 2 segundos antes de tentar novamente
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                retryCount++;
+                                Console.WriteLine($"Erro na chamada RPC (tentativa {retryCount} de {maxRetries}): {ex.Message}");
+
+                                if (retryCount < maxRetries)
+                                {
+                                    Console.WriteLine("Tentando novamente em 3 segundos...");
+                                    await Task.Delay(3000); // Espera mais tempo antes da próxima tentativa
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                                    return false;
+                                }
+                            }
+                        }
+
+                        return success;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Erro inesperado durante a análise: {ex.Message}");
+                        Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                        return false;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Nenhum ponto de dados válido para analisar.");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                connectionRetries++;
+                Console.WriteLine($"Erro ao analisar dados com RPC (tentativa {connectionRetries} de {maxConnectionRetries}): {ex.Message}");
+                
+                if (connectionRetries < maxConnectionRetries)
+                {
+                    Console.WriteLine($"Tentando novamente em {connectionRetries * 2} segundos...");
+                    await Task.Delay(connectionRetries * 2000); // Increasing delay between attempts
+                }
+                else
+                {
                     Console.WriteLine($"Stack trace: {ex.StackTrace}");
                     return false;
                 }
             }
-            else
-            {
-                Console.WriteLine("Nenhum ponto de dados válido para analisar.");
-            }
-            
-            return false;
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro ao analisar dados com RPC: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
-            return false;
-        }
+        
+        return false;
     }
     
     static void StoreAnalysisResults(string wavyId, IDictionary<string, double> statistics)
@@ -338,32 +455,6 @@ class TCPServer
             }
         }
         return localIP;
-    }
-
-    static void CleanEmptyLinesFromCSV(string filePath)
-    {
-        try
-        {
-            if (!File.Exists(filePath))
-            {
-                Console.WriteLine($"Arquivo {filePath} não encontrado.");
-                return;
-            }
-
-            // Ler todas as linhas do ficheiro, ignorando as linhas em branco
-            var nonEmptyLines = File.ReadAllLines(filePath)
-                                    .Where(line => !string.IsNullOrWhiteSpace(line))
-                                    .ToList();
-
-            // Reescrever o ficheiro apenas com as linhas não vazias
-            File.WriteAllLines(filePath, nonEmptyLines);
-
-            Console.WriteLine($"Linhas em branco removidas do ficheiro {filePath}.");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro ao limpar linhas em branco do ficheiro {filePath}: {ex.Message}");
-        }
     }
 
     static async Task<bool> VerifyRpcServiceAvailability()
@@ -454,11 +545,7 @@ class TCPServer
             return false;
         }
     }
-    
-    // Store the successful RPC service URL for later use
-    private static string _rpcServiceUrl = "http://localhost:5038"; // Default URL
-    
-    static void Main()
+      static int Main(string[] args)
     {
         Console.WriteLine("Inicializando base de dados...");
         try
@@ -495,12 +582,16 @@ class TCPServer
 
         // Iniciar dois servidores em threads separadas
         Thread server1 = new Thread(() => StartServer(5000));
-        Thread server2 = new Thread(() => StartServer(5001));
-
-        server1.Start();
+        Thread server2 = new Thread(() => StartServer(5001));        server1.Start();
         server2.Start();
 
         Console.WriteLine("Dois servidores TCP estão em execução...");
+        
+        // Keep the application running until manually closed
+        Console.WriteLine("Press any key to exit...");
+        Console.ReadKey();
+        
+        return 0;
     }
 
     static void DeleteDirectory(string directoryPath)

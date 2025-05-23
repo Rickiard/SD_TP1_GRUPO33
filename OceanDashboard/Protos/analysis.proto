@@ -84,7 +84,7 @@ message PatternDetectionResponse {
 
 // Ocean data message
 message SensorData {
-  string station_id = 1;
+  string sensor_id = 1;
   double longitude = 2;
   double latitude = 3;
   string timestamp = 4;
@@ -101,6 +101,9 @@ message SensorData {
   double sea_temperature_c = 15;
   double relative_humidity_percent = 16;
   int32 qc_flag = 17;
+  string station_id = 18;  // Use this as station_id
+  string value = 19;      // Optional for other data values
+  string unit = 20;       // Unit of measurement
 }
 
 // Pattern message

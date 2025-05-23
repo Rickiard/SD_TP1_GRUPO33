@@ -352,6 +352,9 @@ namespace AggregatorServer
                     OutputFormat = "csv",
                     Data = Google.Protobuf.ByteString.CopyFrom(dataBytes)
                 };
+                  // Pequeno atraso antes de enviar para dar tempo ao servidor RPC se preparar
+                Console.WriteLine($"[{aggregatorId}] Aguardando um momento antes de enviar ao serviço RPC...");
+                await Task.Delay(1000); // Espera 1 segundo
                 
                 // Call the RPC service
                 Console.WriteLine($"[{aggregatorId}] Enviando dados para o serviço de pré-processamento...");
