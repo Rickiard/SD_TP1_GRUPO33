@@ -254,19 +254,33 @@ namespace OceanDashboard.Services
         {
             return new SensorData
             {
-                StationId = string.IsNullOrEmpty(data.StationId) ? data.Location : data.StationId,
+                SensorId = data.SensorId,
+                StationId = data.StationId,
                 Longitude = data.Longitude,
                 Latitude = data.Latitude,
                 Timestamp = data.Timestamp.ToString("o"),
+                
+                // Dados de ondas
                 WaveHeightM = data.WaveHeight,
                 WavePeriodS = data.WavePeriod,
                 MeanWaveDirectionDegrees = data.WaveDirection,
-                SeaTemperatureC = data.SeaTemperature,
-                // Usar os campos atualizados do modelo OceanData
-                WindDirectionDegrees = data.WindDirection,  
+                HmaxM = data.MaxWaveHeight,
+                
+                // Dados atmosféricos e vento
+                AtmosphereMb = data.AtmospherePressure,
+                WindDirectionDegrees = data.WindDirection,
                 WindSpeedKn = data.WindSpeed,
+                GustKn = data.Gust,
+                
+                // Dados de temperatura e umidade
                 AirTemperatureC = data.AirTemperature,
-                RelativeHumidityPercent = data.RelativeHumidity
+                SeaTemperatureC = data.SeaTemperature,
+                DewPointC = data.DewPoint,
+                RelativeHumidityPercent = data.RelativeHumidity,
+                
+                // Metadados
+                QcFlag = data.QcFlag,
+                DataSource = "OceanServer" // Definir a fonte do dado explicitamente
             };
         }
     }

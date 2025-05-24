@@ -55,11 +55,10 @@ namespace OceanDashboard.Services
                 return false;
             }
         }
-        
-        /// <summary>
+          /// <summary>
         /// Gets ocean data from the OceanServer dados_wavy table based on date range
         /// </summary>
-        public List<OceanData> GetDataFromOceanServer(DateTime startDate, DateTime endDate, string location)
+        public List<OceanData> GetDataFromOceanServer(DateTime startDate, DateTime endDate, string stationIdFilter)
         {
             var data = new List<OceanData>();
             
@@ -69,17 +68,29 @@ namespace OceanDashboard.Services
                 {
                     connection.Open();
                     
+                    string whereClause = "WHERE datetime(data_recebida) >= datetime($startDate) AND datetime(data_recebida) <= datetime($endDate)";
+                    
+                    // Se tiver filtro de estação, adicionar à query
+                    if (!string.IsNullOrEmpty(stationIdFilter) && stationIdFilter != "all")
+                    {
+                        whereClause += " AND wavy_id = $stationId";
+                    }
+                    
                     // Query the dados_wavy table
                     var command = connection.CreateCommand();
-                    command.CommandText = @"
+                    command.CommandText = $@"
                         SELECT id, wavy_id, data_linha, data_recebida 
                         FROM dados_wavy 
-                        WHERE datetime(data_recebida) >= datetime($startDate) 
-                        AND datetime(data_recebida) <= datetime($endDate)
+                        {whereClause}
                         ORDER BY data_recebida DESC";
                     
                     command.Parameters.AddWithValue("$startDate", startDate.ToString("o"));
                     command.Parameters.AddWithValue("$endDate", endDate.ToString("o"));
+                    
+                    if (!string.IsNullOrEmpty(stationIdFilter) && stationIdFilter != "all")
+                    {
+                        command.Parameters.AddWithValue("$stationId", stationIdFilter);
+                    }
                     
                     _logger.LogInformation("Executing query for dados_wavy table");
                     
@@ -95,7 +106,7 @@ namespace OceanDashboard.Services
                                 string wavyId = reader.GetString(1); // wavy_id
                                 
                                 // Parse the data_linha field which contains CSV data
-                                var parsedData = ParseWavyDataLine(dataLinha, dataRecebida, wavyId, location);
+                                var parsedData = ParseWavyDataLine(dataLinha, dataRecebida, wavyId, stationIdFilter);
                                 if (parsedData != null)
                                 {
                                     data.Add(parsedData);
@@ -117,11 +128,10 @@ namespace OceanDashboard.Services
             }
             
             return data;
-        }
-          /// <summary>
+        }        /// <summary>
         /// Parse a data_linha field from the OceanServer format into an OceanData object
         /// </summary>
-        private OceanData? ParseWavyDataLine(string dataLinha, string dataRecebida, string wavyId, string location)
+        private OceanData? ParseWavyDataLine(string dataLinha, string dataRecebida, string wavyId, string locationFilter)
         {
             try 
             {
@@ -135,28 +145,87 @@ namespace OceanDashboard.Services
                     return null;
                 }
                 
-                return new OceanData 
+                // Verificar e limpar dados antes de criar o objeto
+                DateTime timestamp;
+                if (!DateTime.TryParse(campos[0], out timestamp))
                 {
-                    Timestamp = DateTime.Parse(campos[0]),
-                    Longitude = double.Parse(campos[1], CultureInfo.InvariantCulture),
-                    Latitude = double.Parse(campos[2], CultureInfo.InvariantCulture),
-                    AtmospherePressure = double.Parse(campos[3], CultureInfo.InvariantCulture),
-                    WindDirection = double.Parse(campos[4], CultureInfo.InvariantCulture),
-                    WindSpeed = double.Parse(campos[5], CultureInfo.InvariantCulture),
-                    Gust = double.Parse(campos[6], CultureInfo.InvariantCulture),
-                    WaveHeight = double.Parse(campos[7], CultureInfo.InvariantCulture),
-                    WavePeriod = double.Parse(campos[8], CultureInfo.InvariantCulture),
-                    WaveDirection = double.Parse(campos[9], CultureInfo.InvariantCulture),
-                    MaxWaveHeight = double.Parse(campos[10], CultureInfo.InvariantCulture),
-                    AirTemperature = double.Parse(campos[11], CultureInfo.InvariantCulture),
-                    DewPoint = double.Parse(campos[12], CultureInfo.InvariantCulture),
-                    SeaTemperature = double.Parse(campos[13], CultureInfo.InvariantCulture),
-                    RelativeHumidity = double.Parse(campos[14], CultureInfo.InvariantCulture),
-                    QcFlag = campos.Length > 15 ? int.Parse(campos[15]) : 0,
+                    _logger.LogWarning("Invalid timestamp in data line: {0}", campos[0]);
+                    timestamp = DateTime.Parse(dataRecebida); // Usar a data de recebimento como fallback
+                }
+                
+                // Calcular valores de fallback para campos importantes
+                double waveHeight = 0.0;
+                double.TryParse(campos[7], NumberStyles.Any, CultureInfo.InvariantCulture, out waveHeight);
+                
+                double wavePeriod = 0.0;
+                double.TryParse(campos[8], NumberStyles.Any, CultureInfo.InvariantCulture, out wavePeriod);
+                
+                double seaTemp = 0.0;
+                double.TryParse(campos[13], NumberStyles.Any, CultureInfo.InvariantCulture, out seaTemp);
+                
+                // Criar objeto com tratamento adequado para valores inválidos
+                var oceanData = new OceanData 
+                {
+                    Timestamp = timestamp,
                     SensorId = wavyId,
-                    StationId = wavyId, // Use wavyId as stationId too
-                    Location = location == "all" ? "Oceano Atlântico" : location
+                    StationId = wavyId
                 };
+                
+                // Campos de posição
+                if (double.TryParse(campos[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double longitude))
+                    oceanData.Longitude = longitude;
+                
+                if (double.TryParse(campos[2], NumberStyles.Any, CultureInfo.InvariantCulture, out double latitude))
+                    oceanData.Latitude = latitude;
+                
+                // Campos atmosféricos
+                if (double.TryParse(campos[3], NumberStyles.Any, CultureInfo.InvariantCulture, out double pressure))
+                    oceanData.AtmospherePressure = pressure;
+                
+                // Campos de vento
+                if (double.TryParse(campos[4], NumberStyles.Any, CultureInfo.InvariantCulture, out double windDir))
+                    oceanData.WindDirection = windDir;
+                
+                if (double.TryParse(campos[5], NumberStyles.Any, CultureInfo.InvariantCulture, out double windSpeed))
+                    oceanData.WindSpeed = windSpeed;
+                
+                if (double.TryParse(campos[6], NumberStyles.Any, CultureInfo.InvariantCulture, out double gust))
+                    oceanData.Gust = gust;
+                
+                // Campos de ondas
+                oceanData.WaveHeight = waveHeight;
+                oceanData.WavePeriod = wavePeriod;
+                
+                if (double.TryParse(campos[9], NumberStyles.Any, CultureInfo.InvariantCulture, out double waveDir))
+                    oceanData.WaveDirection = waveDir;
+                
+                if (double.TryParse(campos[10], NumberStyles.Any, CultureInfo.InvariantCulture, out double maxWaveHeight))
+                    oceanData.MaxWaveHeight = maxWaveHeight;
+                
+                // Campos de temperatura e umidade
+                if (double.TryParse(campos[11], NumberStyles.Any, CultureInfo.InvariantCulture, out double airTemp))
+                    oceanData.AirTemperature = airTemp;
+                
+                if (double.TryParse(campos[12], NumberStyles.Any, CultureInfo.InvariantCulture, out double dewPoint))
+                    oceanData.DewPoint = dewPoint;
+                
+                oceanData.SeaTemperature = seaTemp;
+                
+                if (double.TryParse(campos[14], NumberStyles.Any, CultureInfo.InvariantCulture, out double humidity))
+                    oceanData.RelativeHumidity = humidity;
+                
+                // QC flag
+                if (campos.Length > 15 && int.TryParse(campos[15], out int qcFlag))
+                    oceanData.QcFlag = qcFlag;
+                
+                // Verificar se temos pelo menos alguns dados válidos
+                if (oceanData.WaveHeight <= 0 && oceanData.WindSpeed <= 0 && oceanData.SeaTemperature <= 0)
+                {
+                    _logger.LogWarning("No valid sensor data in line: {0}", dataLinha);
+                    return null;
+                }
+                
+                return oceanData;
             }
             catch (Exception ex)
             {

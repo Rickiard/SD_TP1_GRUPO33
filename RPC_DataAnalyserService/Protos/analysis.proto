@@ -41,6 +41,9 @@ message WaveStatistics {
   double min_period = 6;
   double avg_direction = 7;
   string predominant_direction = 8;
+  double median_height = 9;
+  double median_period = 10;
+  double significant_wave_height = 11;  // H1/3 - média do terço superior das alturas
 }
 
 // Wind statistics
@@ -52,6 +55,11 @@ message WindStatistics {
   double max_gust = 5;
   double avg_direction = 6;
   string predominant_direction = 7;
+  double median_speed = 8;
+  double speed_std_dev = 9;
+  double median_gust = 10;
+  double gust_factor = 11;  // Razão entre rajada máxima e velocidade média
+  map<string, double> beaufort_distribution = 12;  // Distribuição em escala de Beaufort
 }
 
 // Temperature statistics
@@ -63,6 +71,15 @@ message TemperatureStatistics {
   double max_sea_temp = 5;
   double min_sea_temp = 6;
   double avg_humidity = 7;
+  double median_air_temp = 8;
+  double air_temp_std_dev = 9;
+  double median_sea_temp = 10;
+  double sea_temp_std_dev = 11;
+  double max_humidity = 12;
+  double min_humidity = 13;
+  double avg_temp_difference = 14;  // Diferença média entre temperatura do ar e do mar
+  double max_temp_difference = 15;  // Maior diferença de temperatura ar-mar
+  double min_temp_difference = 16;  // Menor diferença de temperatura ar-mar
 }
 
 // Request message for pattern detection
@@ -99,6 +116,10 @@ message SensorData {
   double air_temperature_c = 13;
   double dew_point_c = 14;
   double sea_temperature_c = 15;
+  double relative_humidity_percent = 16;
+  int32 qc_flag = 17;             // Flag de controle de qualidade
+  string sensor_id = 18;          // ID do sensor (mantido para compatibilidade)
+  string data_source = 19;        // Fonte do dado (OceanServer, API externa, etc.)
   double relative_humidity_percent = 16;
   int32 qc_flag = 17;
 }

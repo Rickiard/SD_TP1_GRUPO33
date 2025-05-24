@@ -16,15 +16,11 @@ namespace RPC_DataAnalyserService.Services
         {
             _logger = logger;
         }
-        
-        public override async Task<AnalysisResponse> AnalyzeData(AnalysisRequest request, ServerCallContext context)
+          public override async Task<AnalysisResponse> AnalyzeData(AnalysisRequest request, ServerCallContext context)
         {
             try
             {
                 var response = new AnalysisResponse { Success = true };
-                
-                // Simulando processamento assíncrono
-                await Task.Delay(500);
                 
                 _logger.LogInformation("Iniciando análise de dados oceânicos...");
                 _logger.LogInformation($"Tipo de análise: {request.AnalysisType}, Intervalo: {request.TimeRange}");
@@ -37,20 +33,20 @@ namespace RPC_DataAnalyserService.Services
 
                 // Estatísticas gerais
                 response.Statistics.Add("total_records", request.DataPoints.Count);
-                
-                // Filtrar por localização se especificada
+                  // Filtrar por ID da estação se especificada
                 var dataPoints = request.DataPoints.ToList();
                 if (!string.IsNullOrEmpty(request.Location) && request.Location != "all")
                 {
-                    dataPoints = dataPoints.Where(d => d.StationId == request.Location).ToList();
+                    string stationId = request.Location;
+                    dataPoints = dataPoints.Where(d => d.StationId == stationId || d.SensorId == stationId).ToList();
                     
                     if (dataPoints.Count == 0)
                     {
-                        _logger.LogWarning($"Nenhum dado encontrado para a localização: {request.Location}");
+                        _logger.LogWarning($"Nenhum dado encontrado para a estação: {stationId}");
                         return new AnalysisResponse 
                         { 
                             Success = false, 
-                            ErrorMessage = $"Nenhum dado encontrado para a localização: {request.Location}" 
+                            ErrorMessage = $"Nenhum dado encontrado para a estação: {stationId}" 
                         };
                     }
                     
@@ -58,29 +54,32 @@ namespace RPC_DataAnalyserService.Services
                 }
                 
                 // Calcular estatísticas básicas
-                if (dataPoints.Any(d => !double.IsNaN(d.WaveHeightM)))
+                await CalculateBasicStatistics(dataPoints, response);
+                
+                // Calcular estatísticas específicas com base no tipo de análise
+                switch (request.AnalysisType.ToLower())
                 {
-                    var validWaveData = dataPoints.Where(d => !double.IsNaN(d.WaveHeightM)).ToList();
-                    response.Statistics.Add("avg_wave_height", validWaveData.Average(d => d.WaveHeightM));
-                    response.Statistics.Add("max_wave_height", validWaveData.Max(d => d.WaveHeightM));
-                    response.Statistics.Add("min_wave_height", validWaveData.Min(d => d.WaveHeightM));
+                    case "all":
+                        await CalculateWaveStatistics(dataPoints, response);
+                        await CalculateWindStatistics(dataPoints, response);
+                        await CalculateTemperatureStatistics(dataPoints, response);
+                        break;
+                        
+                    case "wave":
+                        await CalculateWaveStatistics(dataPoints, response);
+                        break;
+                        
+                    case "wind":
+                        await CalculateWindStatistics(dataPoints, response);
+                        break;
+                        
+                    case "temperature":
+                        await CalculateTemperatureStatistics(dataPoints, response);
+                        break;
                 }
                 
-                if (dataPoints.Any(d => !double.IsNaN(d.WindSpeedKn)))
-                {
-                    var validWindData = dataPoints.Where(d => !double.IsNaN(d.WindSpeedKn)).ToList();
-                    response.Statistics.Add("avg_wind_speed", validWindData.Average(d => d.WindSpeedKn));
-                    response.Statistics.Add("max_wind_speed", validWindData.Max(d => d.WindSpeedKn));
-                }
-                
-                if (dataPoints.Any(d => !double.IsNaN(d.SeaTemperatureC)))
-                {
-                    var validTempData = dataPoints.Where(d => !double.IsNaN(d.SeaTemperatureC)).ToList();
-                    response.Statistics.Add("avg_sea_temp", validTempData.Average(d => d.SeaTemperatureC));
-                    response.Statistics.Add("max_sea_temp", validTempData.Max(d => d.SeaTemperatureC));
-                }
-                
-                _logger.LogInformation("Análise de dados oceânicos concluída.");
+                _logger.LogInformation("Análise de dados oceânicos concluída. Retornando {0} estatísticas, {1} estatísticas de onda, {2} de vento, {3} de temperatura.",
+                    response.Statistics.Count, response.WaveStats.Count, response.WindStats.Count, response.TempStats.Count);
                 
                 return response;
             }
@@ -90,224 +89,573 @@ namespace RPC_DataAnalyserService.Services
                 return new AnalysisResponse
                 {
                     Success = false,
-                    ErrorMessage = ex.Message
+                    ErrorMessage = $"Erro ao processar dados: {ex.Message}"
                 };
             }
         }
+          private Task CalculateBasicStatistics(List<SensorData> dataPoints, AnalysisResponse response)
+        {
+            // Log estatísticas básicas
+            _logger.LogInformation("Calculando estatísticas básicas para {Count} pontos de dados", dataPoints.Count);
+            
+            // Contagem por estação
+            var stationsCount = dataPoints
+                .GroupBy(d => d.StationId)
+                .Select(g => new { StationId = g.Key, Count = g.Count() })
+                .ToDictionary(x => x.StationId, x => x.Count);
+                
+            foreach (var station in stationsCount)
+            {
+                response.Statistics.Add($"station_{station.Key}_count", station.Value);
+            }
+            
+            // Altura das ondas
+            if (dataPoints.Any(d => !double.IsNaN(d.WaveHeightM) && d.WaveHeightM > 0))
+            {
+                var validWaveData = dataPoints.Where(d => !double.IsNaN(d.WaveHeightM) && d.WaveHeightM > 0).ToList();
+                response.Statistics.Add("avg_wave_height", validWaveData.Average(d => d.WaveHeightM));
+                response.Statistics.Add("max_wave_height", validWaveData.Max(d => d.WaveHeightM));
+                response.Statistics.Add("min_wave_height", validWaveData.Min(d => d.WaveHeightM));
+                response.Statistics.Add("median_wave_height", CalculateMedian(validWaveData.Select(d => d.WaveHeightM)));
+                response.Statistics.Add("wave_height_std_dev", CalculateStandardDeviation(validWaveData.Select(d => d.WaveHeightM)));
+                response.Statistics.Add("wave_data_count", validWaveData.Count);
+            }
+            
+            // Velocidade do vento
+            if (dataPoints.Any(d => !double.IsNaN(d.WindSpeedKn) && d.WindSpeedKn > 0))
+            {
+                var validWindData = dataPoints.Where(d => !double.IsNaN(d.WindSpeedKn) && d.WindSpeedKn > 0).ToList();
+                response.Statistics.Add("avg_wind_speed", validWindData.Average(d => d.WindSpeedKn));
+                response.Statistics.Add("max_wind_speed", validWindData.Max(d => d.WindSpeedKn));
+                response.Statistics.Add("min_wind_speed", validWindData.Min(d => d.WindSpeedKn));
+                response.Statistics.Add("median_wind_speed", CalculateMedian(validWindData.Select(d => d.WindSpeedKn)));
+                response.Statistics.Add("wind_speed_std_dev", CalculateStandardDeviation(validWindData.Select(d => d.WindSpeedKn)));
+                response.Statistics.Add("wind_data_count", validWindData.Count);
+                
+                // Calcular distribuição de velocidades de vento em faixas de 5 nós
+                var windSpeedDistribution = CalculateDistribution(validWindData.Select(d => d.WindSpeedKn), 0, 50, 5);
+                foreach (var kvp in windSpeedDistribution)
+                {
+                    response.Statistics.Add($"wind_speed_{kvp.Key.Item1}_{kvp.Key.Item2}", kvp.Value);
+                }
+            }
+            
+            // Temperatura do mar
+            if (dataPoints.Any(d => !double.IsNaN(d.SeaTemperatureC)))
+            {
+                var validTempData = dataPoints.Where(d => !double.IsNaN(d.SeaTemperatureC)).ToList();
+                response.Statistics.Add("avg_sea_temp", validTempData.Average(d => d.SeaTemperatureC));
+                response.Statistics.Add("max_sea_temp", validTempData.Max(d => d.SeaTemperatureC));
+                response.Statistics.Add("min_sea_temp", validTempData.Min(d => d.SeaTemperatureC));
+                response.Statistics.Add("median_sea_temp", CalculateMedian(validTempData.Select(d => d.SeaTemperatureC)));
+                response.Statistics.Add("sea_temp_std_dev", CalculateStandardDeviation(validTempData.Select(d => d.SeaTemperatureC)));
+                response.Statistics.Add("sea_temp_data_count", validTempData.Count);
+            }
+            
+            // Temperatura do ar
+            if (dataPoints.Any(d => !double.IsNaN(d.AirTemperatureC)))
+            {
+                var validAirTempData = dataPoints.Where(d => !double.IsNaN(d.AirTemperatureC)).ToList();
+                response.Statistics.Add("avg_air_temp", validAirTempData.Average(d => d.AirTemperatureC));
+                response.Statistics.Add("max_air_temp", validAirTempData.Max(d => d.AirTemperatureC));
+                response.Statistics.Add("min_air_temp", validAirTempData.Min(d => d.AirTemperatureC));
+                response.Statistics.Add("median_air_temp", CalculateMedian(validAirTempData.Select(d => d.AirTemperatureC)));
+                response.Statistics.Add("air_temp_std_dev", CalculateStandardDeviation(validAirTempData.Select(d => d.AirTemperatureC)));
+                response.Statistics.Add("air_temp_data_count", validAirTempData.Count);
+            }
+            
+            // Adicionar dados de qualidade dos dados
+            var qcFlags = dataPoints
+                .Where(d => d.QcFlag > 0)
+                .GroupBy(d => d.QcFlag)
+                .Select(g => new { QcFlag = g.Key, Count = g.Count() })
+                .ToDictionary(x => x.QcFlag, x => x.Count);
+                
+            foreach (var qc in qcFlags)
+            {
+                response.Statistics.Add($"qc_flag_{qc.Key}", qc.Value);
+            }
+            
+            _logger.LogInformation("Estatísticas básicas calculadas: {StatsCount} estatísticas geradas", response.Statistics.Count);
+            return Task.CompletedTask;
+        }
         
-        private void CalculateWaveStatistics(IEnumerable<SensorData> data, Dictionary<string, WaveStatistics> results)
+        private double CalculateMedian(IEnumerable<double> values)
+        {
+            var sortedValues = values.OrderBy(n => n).ToList();
+            int count = sortedValues.Count;
+            
+            if (count == 0)
+                return 0;
+                
+            if (count % 2 == 0)
+                return (sortedValues[count / 2 - 1] + sortedValues[count / 2]) / 2;
+            
+            return sortedValues[count / 2];
+        }
+          private async Task CalculateWaveStatistics(List<SensorData> data, AnalysisResponse response)
         {
             try
             {
-                // Ignorar registros com valores NaN
-                var validWaveData = data.Where(d => !double.IsNaN(d.WaveHeightM) && !double.IsNaN(d.WavePeriodS)).ToList();
+                _logger.LogInformation("Iniciando cálculo de estatísticas de ondas para {Count} registros", data.Count);
                 
-                if (!validWaveData.Any())
+                // Ignorar registros com valores NaN
+                var validWaveHeightData = data.Where(d => !double.IsNaN(d.WaveHeightM) && d.WaveHeightM > 0).ToList();
+                var validWavePeriodData = data.Where(d => !double.IsNaN(d.WavePeriodS) && d.WavePeriodS > 0).ToList();
+                
+                if (!validWaveHeightData.Any())
                 {
-                    _logger.LogWarning("Nenhum dado válido de ondas encontrado");
+                    _logger.LogWarning("Nenhum dado válido de altura de ondas encontrado");
                     return;
                 }
                 
-                var waveStats = new WaveStatistics
-                {
-                    AvgHeight = validWaveData.Average(d => d.WaveHeightM),
-                    MaxHeight = validWaveData.Max(d => d.WaveHeightM),
-                    MinHeight = validWaveData.Min(d => d.WaveHeightM),
-                    AvgPeriod = validWaveData.Average(d => d.WavePeriodS),
-                    MaxPeriod = validWaveData.Max(d => d.WavePeriodS),
-                    MinPeriod = validWaveData.Min(d => d.WavePeriodS)
-                };
+                // Inicializar dicionário de estatísticas de ondas
+                response.WaveStats["overall"] = new WaveStatistics();
                 
-                // Calcular direção predominante (em graus)
-                var validDirectionData = data.Where(d => !double.IsNaN(d.MeanWaveDirectionDegrees)).ToList();
-                if (validDirectionData.Any())
-                {
-                    waveStats.AvgDirection = validDirectionData.Average(d => d.MeanWaveDirectionDegrees);
-                    waveStats.PredominantDirection = GetPredominantDirection(validDirectionData.Select(d => d.MeanWaveDirectionDegrees).ToList());
-                }
-                
-                results["overall"] = waveStats;
-                
-                // Se houver múltiplas estações, calcular estatísticas por estação
-                var stations = data.Select(d => d.StationId).Distinct();
-                foreach (var station in stations)
-                {
-                    var stationData = data.Where(d => d.StationId == station).ToList();
-                    var validStationWaveData = stationData.Where(d => !double.IsNaN(d.WaveHeightM) && !double.IsNaN(d.WavePeriodS)).ToList();
+                // Processar estatísticas gerais em paralelo para melhor performance
+                await Task.Run(() => {
+                    var overallStats = new WaveStatistics
+                    {
+                        AvgHeight = validWaveHeightData.Average(d => d.WaveHeightM),
+                        MaxHeight = validWaveHeightData.Max(d => d.WaveHeightM),
+                        MinHeight = validWaveHeightData.Min(d => d.WaveHeightM),
+                        MedianHeight = CalculateMedian(validWaveHeightData.Select(d => d.WaveHeightM))
+                    };
                     
-                    if (validStationWaveData.Any())
+                    // Adicionar estatísticas de período se disponíveis
+                    if (validWavePeriodData.Any())
+                    {
+                        overallStats.AvgPeriod = validWavePeriodData.Average(d => d.WavePeriodS);
+                        overallStats.MaxPeriod = validWavePeriodData.Max(d => d.WavePeriodS);
+                        overallStats.MinPeriod = validWavePeriodData.Min(d => d.WavePeriodS);
+                        overallStats.MedianPeriod = CalculateMedian(validWavePeriodData.Select(d => d.WavePeriodS));
+                    }
+                    
+                    // Calcular direção média das ondas usando método circular
+                    var validDirectionData = data.Where(d => !double.IsNaN(d.MeanWaveDirectionDegrees)).ToList();
+                    if (validDirectionData.Any())
+                    {
+                        overallStats.AvgDirection = CalculateCircularMean(validDirectionData.Select(d => d.MeanWaveDirectionDegrees));
+                        overallStats.PredominantDirection = GetPredominantDirection(validDirectionData.Select(d => d.MeanWaveDirectionDegrees).ToList());
+                    }
+                    
+                    // Calcular altura significativa das ondas (média do terço superior das alturas)
+                    var sortedHeights = validWaveHeightData.Select(d => d.WaveHeightM).OrderByDescending(h => h).ToList();
+                    int thirdCount = Math.Max(1, sortedHeights.Count / 3);
+                    overallStats.SignificantWaveHeight = sortedHeights.Take(thirdCount).Average();
+                    
+                    // Atribuir estatísticas gerais
+                    response.WaveStats["overall"] = overallStats;
+                    
+                    // Adicionar algumas estatísticas no dicionário geral também
+                    response.Statistics.Add("significant_wave_height", overallStats.SignificantWaveHeight);
+                });
+                
+                // Calcular estatísticas por estação
+                var stationIds = data
+                    .Select(d => d.StationId)
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .Distinct()
+                    .ToList();
+                
+                _logger.LogInformation("Calculando estatísticas de ondas para {Count} estações: {Stations}", 
+                    stationIds.Count, string.Join(", ", stationIds));
+                
+                foreach (var stationId in stationIds)
+                {
+                    var stationData = data.Where(d => d.StationId == stationId).ToList();
+                    var validStationWaveHeightData = stationData.Where(d => !double.IsNaN(d.WaveHeightM) && d.WaveHeightM > 0).ToList();
+                    var validStationWavePeriodData = stationData.Where(d => !double.IsNaN(d.WavePeriodS) && d.WavePeriodS > 0).ToList();
+                    
+                    if (validStationWaveHeightData.Any())
                     {
                         var stationWaveStats = new WaveStatistics
                         {
-                            AvgHeight = validStationWaveData.Average(d => d.WaveHeightM),
-                            MaxHeight = validStationWaveData.Max(d => d.WaveHeightM),
-                            MinHeight = validStationWaveData.Min(d => d.WaveHeightM),
-                            AvgPeriod = validStationWaveData.Average(d => d.WavePeriodS),
-                            MaxPeriod = validStationWaveData.Max(d => d.WavePeriodS),
-                            MinPeriod = validStationWaveData.Min(d => d.WavePeriodS)
+                            AvgHeight = validStationWaveHeightData.Average(d => d.WaveHeightM),
+                            MaxHeight = validStationWaveHeightData.Max(d => d.WaveHeightM),
+                            MinHeight = validStationWaveHeightData.Min(d => d.WaveHeightM),
+                            MedianHeight = CalculateMedian(validStationWaveHeightData.Select(d => d.WaveHeightM))
                         };
                         
-                        var validStationDirectionData = stationData.Where(d => !double.IsNaN(d.MeanWaveDirectionDegrees)).ToList();
-                        if (validStationDirectionData.Any())
+                        // Adicionar estatísticas de período se disponíveis
+                        if (validStationWavePeriodData.Any())
                         {
-                            stationWaveStats.AvgDirection = validStationDirectionData.Average(d => d.MeanWaveDirectionDegrees);
+                            stationWaveStats.AvgPeriod = validStationWavePeriodData.Average(d => d.WavePeriodS);
+                            stationWaveStats.MaxPeriod = validStationWavePeriodData.Max(d => d.WavePeriodS);
+                            stationWaveStats.MinPeriod = validStationWavePeriodData.Min(d => d.WavePeriodS);
+                            stationWaveStats.MedianPeriod = CalculateMedian(validStationWavePeriodData.Select(d => d.WavePeriodS));
+                        }
+                        
+                        // Calcular direção média                            stationWaveStats.AvgDirection = CalculateCircularMean(validStationDirectionData.Select(d => d.MeanWaveDirectionDegrees));
                             stationWaveStats.PredominantDirection = GetPredominantDirection(validStationDirectionData.Select(d => d.MeanWaveDirectionDegrees).ToList());
                         }
                         
-                        results[station] = stationWaveStats;
+                        // Calcular altura significativa das ondas (média do terço superior das alturas)
+                        var sortedHeights = validStationWaveHeightData.Select(d => d.WaveHeightM).OrderByDescending(h => h).ToList();
+                        int thirdCount = Math.Max(1, sortedHeights.Count / 3);
+                        stationWaveStats.SignificantWaveHeight = sortedHeights.Take(thirdCount).Average();
+                        
+                        // Adicionar ao dicionário de estatísticas
+                        response.WaveStats[stationId] = stationWaveStats;
+                        
+                        // Adicionar estatísticas importantes dessa estação ao dicionário geral também
+                        response.Statistics.Add($"significant_wave_height_{stationId}", stationWaveStats.SignificantWaveHeight);
+                        response.Statistics.Add($"max_wave_height_{stationId}", stationWaveStats.MaxHeight);
                     }
                 }
+                
+                _logger.LogInformation("Estatísticas de ondas calculadas para {Count} estações", response.WaveStats.Count - 1);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erro ao calcular estatísticas de ondas");
             }
         }
-        
-        private void CalculateWindStatistics(IEnumerable<SensorData> data, Dictionary<string, WindStatistics> results)
+          private async Task CalculateWindStatistics(List<SensorData> data, AnalysisResponse response)
         {
             try
             {
-                // Ignorar registros com valores NaN
-                var validWindData = data.Where(d => !double.IsNaN(d.WindSpeedKn) && !double.IsNaN(d.WindDirectionDegrees)).ToList();
+                _logger.LogInformation("Iniciando cálculo de estatísticas de vento para {Count} registros", data.Count);
                 
-                if (!validWindData.Any())
+                // Ignorar registros com valores NaN
+                var validWindSpeedData = data.Where(d => !double.IsNaN(d.WindSpeedKn) && d.WindSpeedKn >= 0).ToList();
+                var validWindDirData = data.Where(d => !double.IsNaN(d.WindDirectionDegrees)).ToList();
+                
+                if (!validWindSpeedData.Any())
                 {
-                    _logger.LogWarning("Nenhum dado válido de vento encontrado");
+                    _logger.LogWarning("Nenhum dado válido de velocidade do vento encontrado");
                     return;
                 }
                 
-                var windStats = new WindStatistics
-                {
-                    AvgSpeed = validWindData.Average(d => d.WindSpeedKn),
-                    MaxSpeed = validWindData.Max(d => d.WindSpeedKn),
-                    MinSpeed = validWindData.Min(d => d.WindSpeedKn),
-                    AvgDirection = validWindData.Average(d => d.WindDirectionDegrees),
-                    PredominantDirection = GetPredominantDirection(validWindData.Select(d => d.WindDirectionDegrees).ToList())
-                };
+                // Inicializar dicionário de estatísticas de vento
+                response.WindStats["overall"] = new WindStatistics();
                 
-                // Calcular estatísticas de rajadas
-                var validGustData = data.Where(d => !double.IsNaN(d.GustKn)).ToList();
-                if (validGustData.Any())
-                {
-                    windStats.AvgGust = validGustData.Average(d => d.GustKn);
-                    windStats.MaxGust = validGustData.Max(d => d.GustKn);
-                }
-                
-                results["overall"] = windStats;
-                
-                // Se houver múltiplas estações, calcular estatísticas por estação
-                var stations = data.Select(d => d.StationId).Distinct();
-                foreach (var station in stations)
-                {
-                    var stationData = data.Where(d => d.StationId == station).ToList();
-                    var validStationWindData = stationData.Where(d => !double.IsNaN(d.WindSpeedKn) && !double.IsNaN(d.WindDirectionDegrees)).ToList();
+                // Processar estatísticas gerais em paralelo para melhor performance
+                await Task.Run(() => {
+                    var overallStats = new WindStatistics
+                    {
+                        AvgSpeed = validWindSpeedData.Average(d => d.WindSpeedKn),
+                        MaxSpeed = validWindSpeedData.Max(d => d.WindSpeedKn),
+                        MinSpeed = validWindSpeedData.Min(d => d.WindSpeedKn),
+                        MedianSpeed = CalculateMedian(validWindSpeedData.Select(d => d.WindSpeedKn)),
+                        SpeedStdDev = CalculateStandardDeviation(validWindSpeedData.Select(d => d.WindSpeedKn))
+                    };
                     
-                    if (validStationWindData.Any())
+                    // Calcular direção média e predominante
+                    if (validWindDirData.Any())
+                    {
+                        overallStats.AvgDirection = CalculateCircularMean(validWindDirData.Select(d => d.WindDirectionDegrees));
+                        overallStats.PredominantDirection = GetPredominantDirection(validWindDirData.Select(d => d.WindDirectionDegrees).ToList());
+                    }
+                    
+                    // Calcular estatísticas de rajadas
+                    var validGustData = data.Where(d => !double.IsNaN(d.GustKn) && d.GustKn > 0).ToList();
+                    if (validGustData.Any())
+                    {
+                        overallStats.AvgGust = validGustData.Average(d => d.GustKn);
+                        overallStats.MaxGust = validGustData.Max(d => d.GustKn);
+                        overallStats.MedianGust = CalculateMedian(validGustData.Select(d => d.GustKn));
+                        
+                        // Calcular razão rajada/velocidade média (Gust factor)
+                        if (overallStats.AvgSpeed > 0)
+                        {
+                            overallStats.GustFactor = overallStats.MaxGust / overallStats.AvgSpeed;
+                        }
+                    }
+                    
+                    // Calcular distribuição de Beaufort
+                    var beaufortDistribution = CalculateBeaufortDistribution(validWindSpeedData.Select(d => d.WindSpeedKn));
+                    overallStats.BeaufortDistribution = beaufortDistribution
+                        .Select(kv => new KeyValuePair<string, double>(kv.Key.ToString(), kv.Value))
+                        .ToDictionary(kv => kv.Key, kv => kv.Value);
+                    
+                    // Atribuir estatísticas gerais
+                    response.WindStats["overall"] = overallStats;
+                    
+                    // Adicionar algumas estatísticas no dicionário geral também
+                    response.Statistics.Add("max_gust", overallStats.MaxGust);
+                    if (overallStats.GustFactor > 0)
+                    {
+                        response.Statistics.Add("gust_factor", overallStats.GustFactor);
+                    }
+                });
+                
+                // Calcular estatísticas por estação
+                var stationIds = data
+                    .Select(d => d.StationId)
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .Distinct()
+                    .ToList();
+                
+                _logger.LogInformation("Calculando estatísticas de vento para {Count} estações: {Stations}", 
+                    stationIds.Count, string.Join(", ", stationIds));
+                
+                foreach (var stationId in stationIds)
+                {
+                    var stationData = data.Where(d => d.StationId == stationId).ToList();
+                    var stationWindSpeedData = stationData.Where(d => !double.IsNaN(d.WindSpeedKn) && d.WindSpeedKn >= 0).ToList();
+                    var stationWindDirData = stationData.Where(d => !double.IsNaN(d.WindDirectionDegrees)).ToList();
+                    
+                    if (stationWindSpeedData.Any())
                     {
                         var stationWindStats = new WindStatistics
                         {
-                            AvgSpeed = validStationWindData.Average(d => d.WindSpeedKn),
-                            MaxSpeed = validStationWindData.Max(d => d.WindSpeedKn),
-                            MinSpeed = validStationWindData.Min(d => d.WindSpeedKn),
-                            AvgDirection = validStationWindData.Average(d => d.WindDirectionDegrees),
-                            PredominantDirection = GetPredominantDirection(validStationWindData.Select(d => d.WindDirectionDegrees).ToList())
+                            AvgSpeed = stationWindSpeedData.Average(d => d.WindSpeedKn),
+                            MaxSpeed = stationWindSpeedData.Max(d => d.WindSpeedKn),
+                            MinSpeed = stationWindSpeedData.Min(d => d.WindSpeedKn),
+                            MedianSpeed = CalculateMedian(stationWindSpeedData.Select(d => d.WindSpeedKn)),
+                            SpeedStdDev = CalculateStandardDeviation(stationWindSpeedData.Select(d => d.WindSpeedKn))
                         };
                         
-                        var validStationGustData = stationData.Where(d => !double.IsNaN(d.GustKn)).ToList();
-                        if (validStationGustData.Any())
+                        // Calcular direção média e predominante
+                        if (stationWindDirData.Any())
                         {
-                            stationWindStats.AvgGust = validStationGustData.Average(d => d.GustKn);
-                            stationWindStats.MaxGust = validStationGustData.Max(d => d.GustKn);
+                            stationWindStats.AvgDirection = CalculateCircularMean(stationWindDirData.Select(d => d.WindDirectionDegrees));
+                            stationWindStats.PredominantDirection = GetPredominantDirection(stationWindDirData.Select(d => d.WindDirectionDegrees).ToList());
                         }
                         
-                        results[station] = stationWindStats;
+                        // Calcular estatísticas de rajadas
+                        var stationGustData = stationData.Where(d => !double.IsNaN(d.GustKn) && d.GustKn > 0).ToList();
+                        if (stationGustData.Any())
+                        {
+                            stationWindStats.AvgGust = stationGustData.Average(d => d.GustKn);
+                            stationWindStats.MaxGust = stationGustData.Max(d => d.GustKn);
+                            stationWindStats.MedianGust = CalculateMedian(stationGustData.Select(d => d.GustKn));
+                            
+                            // Calcular razão rajada/velocidade média (Gust factor)
+                            if (stationWindStats.AvgSpeed > 0)
+                            {
+                                stationWindStats.GustFactor = stationWindStats.MaxGust / stationWindStats.AvgSpeed;
+                            }
+                        }
+                        
+                        // Calcular distribuição de Beaufort
+                        var beaufortDistribution = CalculateBeaufortDistribution(stationWindSpeedData.Select(d => d.WindSpeedKn));
+                        stationWindStats.BeaufortDistribution = beaufortDistribution
+                            .Select(kv => new KeyValuePair<string, double>(kv.Key.ToString(), kv.Value))
+                            .ToDictionary(kv => kv.Key, kv => kv.Value);
+                        
+                        // Adicionar ao dicionário de estatísticas
+                        response.WindStats[stationId] = stationWindStats;
+                        
+                        // Adicionar estatísticas importantes dessa estação ao dicionário geral também
+                        response.Statistics.Add($"max_wind_speed_{stationId}", stationWindStats.MaxSpeed);
+                        response.Statistics.Add($"max_gust_{stationId}", stationWindStats.MaxGust);
                     }
                 }
+                
+                _logger.LogInformation("Estatísticas de vento calculadas para {Count} estações", response.WindStats.Count - 1);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao calcular estatísticas de vento");
+                _logger.LogError(ex, "Erro ao calcular estatísticas de vento: {Message}", ex.Message);
             }
         }
         
-        private void CalculateTemperatureStatistics(IEnumerable<SensorData> data, Dictionary<string, TemperatureStatistics> results)
+        // Calcular distribuição de velocidades do vento na escala de Beaufort
+        private Dictionary<int, double> CalculateBeaufortDistribution(IEnumerable<double> windSpeedsKn)
+        {
+            var result = new Dictionary<int, double>();
+            var windSpeedsList = windSpeedsKn.ToList();
+            
+            if (!windSpeedsList.Any())
+                return result;
+            
+            int totalCount = windSpeedsList.Count;
+            
+            // Definir limites de velocidade para cada categoria de Beaufort (em nós)
+            var beaufortLimits = new[]
+            {
+                0, 1, 3, 7, 10, 16, 21, 27, 33, 40, 47, 55, 63
+            };
+            
+            // Calcular percentual de registros em cada categoria
+            for (int i = 0; i <= 12; i++)
+            {
+                double lowerLimit = i < beaufortLimits.Length ? beaufortLimits[i] : beaufortLimits.Last();
+                double upperLimit = i + 1 < beaufortLimits.Length ? beaufortLimits[i + 1] : double.MaxValue;
+                
+                int count;
+                if (i == 12) // Último nível de Beaufort (Furacão)
+                {
+                    count = windSpeedsList.Count(v => v >= lowerLimit);
+                }
+                else
+                {
+                    count = windSpeedsList.Count(v => v >= lowerLimit && v < upperLimit);
+                }
+                
+                double percentage = (double)count / totalCount * 100;
+                result[i] = percentage;
+            }
+            
+            return result;
+        }
+          private async Task CalculateTemperatureStatistics(List<SensorData> data, AnalysisResponse response)
         {
             try
             {
-                // Air temperature statistics
-                var validAirTempData = data.Where(d => !double.IsNaN(d.AirTemperatureC)).ToList();
-                var validSeaTempData = data.Where(d => !double.IsNaN(d.SeaTemperatureC)).ToList();
-                var validHumidityData = data.Where(d => !double.IsNaN(d.RelativeHumidityPercent)).ToList();
+                _logger.LogInformation("Iniciando cálculo de estatísticas de temperatura para {Count} registros", data.Count);
                 
-                if (!validAirTempData.Any() && !validSeaTempData.Any())
+                // Obter dados válidos
+                var validSeaTempData = data.Where(d => !double.IsNaN(d.SeaTemperatureC)).ToList();
+                var validAirTempData = data.Where(d => !double.IsNaN(d.AirTemperatureC)).ToList();
+                var validHumidityData = data.Where(d => !double.IsNaN(d.RelativeHumidityPercent) && d.RelativeHumidityPercent >= 0 && d.RelativeHumidityPercent <= 100).ToList();
+                
+                if (!validSeaTempData.Any() && !validAirTempData.Any())
                 {
                     _logger.LogWarning("Nenhum dado válido de temperatura encontrado");
                     return;
                 }
                 
-                var tempStats = new TemperatureStatistics();
+                // Inicializar dicionário de estatísticas de temperatura
+                response.TempStats["overall"] = new TemperatureStatistics();
                 
-                if (validAirTempData.Any())
-                {
-                    tempStats.AvgAirTemp = validAirTempData.Average(d => d.AirTemperatureC);
-                    tempStats.MaxAirTemp = validAirTempData.Max(d => d.AirTemperatureC);
-                    tempStats.MinAirTemp = validAirTempData.Min(d => d.AirTemperatureC);
-                }
-                
-                if (validSeaTempData.Any())
-                {
-                    tempStats.AvgSeaTemp = validSeaTempData.Average(d => d.SeaTemperatureC);
-                    tempStats.MaxSeaTemp = validSeaTempData.Max(d => d.SeaTemperatureC);
-                    tempStats.MinSeaTemp = validSeaTempData.Min(d => d.SeaTemperatureC);
-                }
-                
-                if (validHumidityData.Any())
-                {
-                    tempStats.AvgHumidity = validHumidityData.Average(d => d.RelativeHumidityPercent);
-                }
-                
-                results["overall"] = tempStats;
-                
-                // Se houver múltiplas estações, calcular estatísticas por estação
-                var stations = data.Select(d => d.StationId).Distinct();
-                foreach (var station in stations)
-                {
-                    var stationData = data.Where(d => d.StationId == station).ToList();
-                    var validStationAirTempData = stationData.Where(d => !double.IsNaN(d.AirTemperatureC)).ToList();
-                    var validStationSeaTempData = stationData.Where(d => !double.IsNaN(d.SeaTemperatureC)).ToList();
-                    var validStationHumidityData = stationData.Where(d => !double.IsNaN(d.RelativeHumidityPercent)).ToList();
+                // Processar estatísticas gerais em paralelo para melhor performance
+                await Task.Run(() => {
+                    var overallStats = new TemperatureStatistics();
                     
-                    if (validStationAirTempData.Any() || validStationSeaTempData.Any())
+                    // Temperatura do mar
+                    if (validSeaTempData.Any())
+                    {
+                        overallStats.AvgSeaTemp = validSeaTempData.Average(d => d.SeaTemperatureC);
+                        overallStats.MaxSeaTemp = validSeaTempData.Max(d => d.SeaTemperatureC);
+                        overallStats.MinSeaTemp = validSeaTempData.Min(d => d.SeaTemperatureC);
+                        overallStats.MedianSeaTemp = CalculateMedian(validSeaTempData.Select(d => d.SeaTemperatureC));
+                        overallStats.SeaTempStdDev = CalculateStandardDeviation(validSeaTempData.Select(d => d.SeaTemperatureC));
+                    }
+                    
+                    // Temperatura do ar
+                    if (validAirTempData.Any())
+                    {
+                        overallStats.AvgAirTemp = validAirTempData.Average(d => d.AirTemperatureC);
+                        overallStats.MaxAirTemp = validAirTempData.Max(d => d.AirTemperatureC);
+                        overallStats.MinAirTemp = validAirTempData.Min(d => d.AirTemperatureC);
+                        overallStats.MedianAirTemp = CalculateMedian(validAirTempData.Select(d => d.AirTemperatureC));
+                        overallStats.AirTempStdDev = CalculateStandardDeviation(validAirTempData.Select(d => d.AirTemperatureC));
+                    }
+                    
+                    // Umidade relativa
+                    if (validHumidityData.Any())
+                    {
+                        overallStats.AvgHumidity = validHumidityData.Average(d => d.RelativeHumidityPercent);
+                        overallStats.MaxHumidity = validHumidityData.Max(d => d.RelativeHumidityPercent);
+                        overallStats.MinHumidity = validHumidityData.Min(d => d.RelativeHumidityPercent);
+                    }
+                    
+                    // Calcular diferenças médias entre temperatura do ar e do mar
+                    if (validSeaTempData.Any() && validAirTempData.Any())
+                    {
+                        // Para comparações precisas, precisamos de registros com ambas as temperaturas no mesmo timestamp
+                        var recordsWithBothTemps = data.Where(d => !double.IsNaN(d.SeaTemperatureC) && !double.IsNaN(d.AirTemperatureC)).ToList();
+                        if (recordsWithBothTemps.Any())
+                        {
+                            overallStats.AvgTempDifference = recordsWithBothTemps.Average(d => d.AirTemperatureC - d.SeaTemperatureC);
+                            overallStats.MaxTempDifference = recordsWithBothTemps.Max(d => d.AirTemperatureC - d.SeaTemperatureC);
+                            overallStats.MinTempDifference = recordsWithBothTemps.Min(d => d.AirTemperatureC - d.SeaTemperatureC);
+                        }
+                    }
+                    
+                    // Atribuir estatísticas gerais
+                    response.TempStats["overall"] = overallStats;
+                    
+                    // Adicionar algumas estatísticas no dicionário geral também
+                    if (validSeaTempData.Any())
+                    {
+                        response.Statistics.Add("temp_sea_range", overallStats.MaxSeaTemp - overallStats.MinSeaTemp);
+                    }
+                    
+                    if (validAirTempData.Any())
+                    {
+                        response.Statistics.Add("temp_air_range", overallStats.MaxAirTemp - overallStats.MinAirTemp);
+                    }
+                });
+                
+                // Calcular estatísticas por estação
+                var stationIds = data
+                    .Select(d => d.StationId)
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .Distinct()
+                    .ToList();
+                
+                _logger.LogInformation("Calculando estatísticas de temperatura para {Count} estações: {Stations}", 
+                    stationIds.Count, string.Join(", ", stationIds));
+                
+                foreach (var stationId in stationIds)
+                {
+                    var stationData = data.Where(d => d.StationId == stationId).ToList();
+                    var stationSeaTempData = stationData.Where(d => !double.IsNaN(d.SeaTemperatureC)).ToList();
+                    var stationAirTempData = stationData.Where(d => !double.IsNaN(d.AirTemperatureC)).ToList();
+                    var stationHumidityData = stationData.Where(d => !double.IsNaN(d.RelativeHumidityPercent) && 
+                                                                     d.RelativeHumidityPercent >= 0 && 
+                                                                     d.RelativeHumidityPercent <= 100).ToList();
+                    
+                    if (stationSeaTempData.Any() || stationAirTempData.Any())
                     {
                         var stationTempStats = new TemperatureStatistics();
                         
-                        if (validStationAirTempData.Any())
+                        // Temperatura do mar
+                        if (stationSeaTempData.Any())
                         {
-                            stationTempStats.AvgAirTemp = validStationAirTempData.Average(d => d.AirTemperatureC);
-                            stationTempStats.MaxAirTemp = validStationAirTempData.Max(d => d.AirTemperatureC);
-                            stationTempStats.MinAirTemp = validStationAirTempData.Min(d => d.AirTemperatureC);
+                            stationTempStats.AvgSeaTemp = stationSeaTempData.Average(d => d.SeaTemperatureC);
+                            stationTempStats.MaxSeaTemp = stationSeaTempData.Max(d => d.SeaTemperatureC);
+                            stationTempStats.MinSeaTemp = stationSeaTempData.Min(d => d.SeaTemperatureC);
+                            stationTempStats.MedianSeaTemp = CalculateMedian(stationSeaTempData.Select(d => d.SeaTemperatureC));
+                            stationTempStats.SeaTempStdDev = CalculateStandardDeviation(stationSeaTempData.Select(d => d.SeaTemperatureC));
                         }
                         
-                        if (validStationSeaTempData.Any())
+                        // Temperatura do ar
+                        if (stationAirTempData.Any())
                         {
-                            stationTempStats.AvgSeaTemp = validStationSeaTempData.Average(d => d.SeaTemperatureC);
-                            stationTempStats.MaxSeaTemp = validStationSeaTempData.Max(d => d.SeaTemperatureC);
-                            stationTempStats.MinSeaTemp = validStationSeaTempData.Min(d => d.SeaTemperatureC);
+                            stationTempStats.AvgAirTemp = stationAirTempData.Average(d => d.AirTemperatureC);
+                            stationTempStats.MaxAirTemp = stationAirTempData.Max(d => d.AirTemperatureC);
+                            stationTempStats.MinAirTemp = stationAirTempData.Min(d => d.AirTemperatureC);
+                            stationTempStats.MedianAirTemp = CalculateMedian(stationAirTempData.Select(d => d.AirTemperatureC));
+                            stationTempStats.AirTempStdDev = CalculateStandardDeviation(stationAirTempData.Select(d => d.AirTemperatureC));
                         }
                         
-                        if (validStationHumidityData.Any())
+                        // Umidade relativa
+                        if (stationHumidityData.Any())
                         {
-                            stationTempStats.AvgHumidity = validStationHumidityData.Average(d => d.RelativeHumidityPercent);
+                            stationTempStats.AvgHumidity = stationHumidityData.Average(d => d.RelativeHumidityPercent);
+                            stationTempStats.MaxHumidity = stationHumidityData.Max(d => d.RelativeHumidityPercent);
+                            stationTempStats.MinHumidity = stationHumidityData.Min(d => d.RelativeHumidityPercent);
                         }
                         
-                        results[station] = stationTempStats;
+                        // Calcular diferenças entre temperatura do ar e do mar
+                        if (stationSeaTempData.Any() && stationAirTempData.Any())
+                        {
+                            // Para comparações precisas, precisamos de registros com ambas as temperaturas no mesmo timestamp
+                            var recordsWithBothTemps = stationData.Where(d => !double.IsNaN(d.SeaTemperatureC) && !double.IsNaN(d.AirTemperatureC)).ToList();
+                            if (recordsWithBothTemps.Any())
+                            {
+                                stationTempStats.AvgTempDifference = recordsWithBothTemps.Average(d => d.AirTemperatureC - d.SeaTemperatureC);
+                                stationTempStats.MaxTempDifference = recordsWithBothTemps.Max(d => d.AirTemperatureC - d.SeaTemperatureC);
+                                stationTempStats.MinTempDifference = recordsWithBothTemps.Min(d => d.AirTemperatureC - d.SeaTemperatureC);
+                            }
+                        }
+                        
+                        // Adicionar ao dicionário de estatísticas
+                        response.TempStats[stationId] = stationTempStats;
+                        
+                        // Adicionar estatísticas importantes dessa estação ao dicionário geral também
+                        if (stationSeaTempData.Any())
+                        {
+                            response.Statistics.Add($"max_sea_temp_{stationId}", stationTempStats.MaxSeaTemp);
+                        }
+                        
+                        if (stationAirTempData.Any())
+                        {
+                            response.Statistics.Add($"max_air_temp_{stationId}", stationTempStats.MaxAirTemp);
+                        }
                     }
                 }
+                
+                _logger.LogInformation("Estatísticas de temperatura calculadas para {Count} estações", response.TempStats.Count - 1);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao calcular estatísticas de temperatura");
+                _logger.LogError(ex, "Erro ao calcular estatísticas de temperatura: {Message}", ex.Message);
             }
         }
         
@@ -807,5 +1155,71 @@ namespace RPC_DataAnalyserService.Services
                 .Select(g => g.Key)
                 .FirstOrDefault() ?? "desconhecido";
         }
+        
+        // Calcular desvio padrão para uma sequência de valores
+        private double CalculateStandardDeviation(IEnumerable<double> values)
+        {
+            var valuesList = values.ToList();
+            if (!valuesList.Any())
+                return 0;
+                
+            var avg = valuesList.Average();
+            var sum = valuesList.Sum(d => Math.Pow(d - avg, 2));
+            return Math.Sqrt(sum / valuesList.Count);
+        }
+        
+        // Calcular distribuição de valores em faixas
+        private Dictionary<(double, double), double> CalculateDistribution(
+            IEnumerable<double> values,
+            double min,
+            double max,
+            double binSize)
+        {
+            var result = new Dictionary<(double, double), double>();
+            var valuesList = values.ToList();
+            
+            if (!valuesList.Any())
+                return result;
+                
+            int totalCount = valuesList.Count;
+            double binStart = min;
+            
+            while (binStart < max)
+            {
+                double binEnd = binStart + binSize;
+                int count = valuesList.Count(v => v >= binStart && v < binEnd);
+                double percentage = (double)count / totalCount * 100;
+                
+                result.Add((binStart, binEnd), percentage);
+                binStart = binEnd;
+            }
+            
+            return result;
+        }
+        
+        // Calcular direção média circular para valores de direção em graus
+        private double CalculateCircularMean(IEnumerable<double> directions)
+        {
+            var directionsList = directions.ToList();
+            if (!directionsList.Any())
+                return 0;
+                
+            // Converter graus para radianos
+            var radiansValues = directionsList.Select(d => d * Math.PI / 180.0);
+            
+            // Calcular os componentes x e y
+            double sumSin = radiansValues.Sum(r => Math.Sin(r));
+            double sumCos = radiansValues.Sum(r => Math.Cos(r));
+            
+            // Calcular o ângulo médio em radianos
+            double meanRadians = Math.Atan2(sumSin, sumCos);
+            
+            // Converter de volta para graus no intervalo [0, 360)
+            double meanDegrees = meanRadians * 180.0 / Math.PI;
+            if (meanDegrees < 0)
+                meanDegrees += 360.0;
+                
+            return meanDegrees;
+        }
     }
-} 
+}

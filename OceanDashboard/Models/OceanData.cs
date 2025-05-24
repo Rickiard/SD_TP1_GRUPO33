@@ -35,14 +35,13 @@ namespace OceanDashboard.Models
         public double SeaTemperature { get; set; }     // sea_temperature_c in proto
         public double RelativeHumidity { get; set; }   // relative_humidity_percent in proto
         
-        // Quality control and station information
-        public int QcFlag { get; set; }                // qc_flag in proto
-        public string StationId { get; set; } = string.Empty;
-        public string Location { get; set; } = "Oceano Atlântico";
-        
-        // Additional fields (optional in proto)
-        public string Value { get; set; } = string.Empty;  // For any other data values
-        public string Unit { get; set; } = string.Empty;   // Unit of measurement
+    // Quality control and station information
+    public int QcFlag { get; set; }                // qc_flag in proto
+    public string StationId { get; set; } = string.Empty;
+    
+    // Additional fields (optional in proto)
+    public string Value { get; set; } = string.Empty;  // For any other data values
+    public string Unit { get; set; } = string.Empty;   // Unit of measurement
         
         /// <summary>
         /// Constructor that sets default values to 0

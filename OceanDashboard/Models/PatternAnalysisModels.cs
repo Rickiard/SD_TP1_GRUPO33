@@ -90,9 +90,7 @@ namespace OceanDashboard.Models
         public Dictionary<string, WaveStatisticsInfo> WaveStatistics { get; set; } = new Dictionary<string, WaveStatisticsInfo>();
         public Dictionary<string, WindStatisticsInfo> WindStatistics { get; set; } = new Dictionary<string, WindStatisticsInfo>();
         public Dictionary<string, TemperatureStatisticsInfo> TemperatureStatistics { get; set; } = new Dictionary<string, TemperatureStatisticsInfo>();
-    }
-
-    public class WaveStatisticsInfo
+    }    public class WaveStatisticsInfo
     {
         public double AvgHeight { get; set; }
         public double MaxHeight { get; set; }
@@ -102,6 +100,10 @@ namespace OceanDashboard.Models
         public double MinPeriod { get; set; }
         public double AvgDirection { get; set; }
         public string PredominantDirection { get; set; }
+        // Novos campos
+        public double MedianHeight { get; set; }
+        public double MedianPeriod { get; set; }
+        public double SignificantWaveHeight { get; set; }  // H1/3 - média do terço superior das alturas
     }
 
     public class WindStatisticsInfo
@@ -113,6 +115,12 @@ namespace OceanDashboard.Models
         public double MaxGust { get; set; }
         public double AvgDirection { get; set; }
         public string PredominantDirection { get; set; }
+        // Novos campos
+        public double MedianSpeed { get; set; }
+        public double SpeedStdDev { get; set; }
+        public double MedianGust { get; set; }
+        public double GustFactor { get; set; }  // Razão entre rajada máxima e velocidade média
+        public Dictionary<string, double> BeaufortDistribution { get; set; } = new Dictionary<string, double>();
     }
 
     public class TemperatureStatisticsInfo
@@ -124,5 +132,15 @@ namespace OceanDashboard.Models
         public double MaxSeaTemp { get; set; }
         public double MinSeaTemp { get; set; }
         public double AvgHumidity { get; set; }
+        // Novos campos
+        public double MedianAirTemp { get; set; }
+        public double AirTempStdDev { get; set; }
+        public double MedianSeaTemp { get; set; }
+        public double SeaTempStdDev { get; set; }
+        public double MaxHumidity { get; set; }
+        public double MinHumidity { get; set; }
+        public double AvgTempDifference { get; set; }  // Diferença média entre temperatura do ar e do mar
+        public double MaxTempDifference { get; set; }  // Maior diferença de temperatura ar-mar
+        public double MinTempDifference { get; set; }  // Menor diferença de temperatura ar-mar
     }
 }

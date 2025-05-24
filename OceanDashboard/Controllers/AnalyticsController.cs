@@ -23,24 +23,22 @@ namespace OceanDashboard.Controllers
             _logger = logger;
             _homeController = homeController;
             _dataAnalysisClient = dataAnalysisClient;
-        }
-
-        [HttpGet("detect-patterns")]
+        }        [HttpGet("detect-patterns")]
         public async Task<IActionResult> DetectPatterns(
             string patternType = "all", 
             string dataField = "wave_height", 
             string timeRange = "24h", 
-            string location = "all",
+            string stationId = "all",
             int windowSize = 10)
         {
             try
             {
                 _logger.LogInformation("Iniciando detecção de padrões: tipo={PatternType}, campo={DataField}, " +
-                    "período={TimeRange}, local={Location}, janela={WindowSize}",
-                    patternType, dataField, timeRange, location, windowSize);
+                    "período={TimeRange}, estação={StationId}, janela={WindowSize}",
+                    patternType, dataField, timeRange, stationId, windowSize);
 
                 // Buscar os dados do oceano para o período especificado
-                var oceanData = _homeController.GetLatestOceanData(timeRange, location, "raw");
+                var oceanData = _homeController.GetLatestOceanData(timeRange, stationId, "raw");
                 
                 if (oceanData == null || oceanData.Count == 0)
                 {
