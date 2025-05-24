@@ -36,12 +36,8 @@ namespace OceanDashboard.Services
             string dataField, 
             int windowSize)
         {
-            _logger.LogInformation("Chamando serviço gRPC para detectar padrões em {Count} pontos de dados", oceanData.Count);
-              try
+            _logger.LogInformation("Chamando serviço gRPC para detectar padrões em {Count} pontos de dados", oceanData.Count);        try
             {
-                // Configure HTTP client timeout
-                _httpClient.Timeout = TimeSpan.FromSeconds(30);
-                
                 var channelOptions = new GrpcChannelOptions { 
                     HttpClient = _httpClient,
                     DisposeHttpClient = false // Don't dispose the HTTP client when the channel is disposed
@@ -276,11 +272,8 @@ namespace OceanDashboard.Services
                 AirTemperatureC = data.AirTemperature,
                 SeaTemperatureC = data.SeaTemperature,
                 DewPointC = data.DewPoint,
-                RelativeHumidityPercent = data.RelativeHumidity,
-                
-                // Metadados
-                QcFlag = data.QcFlag,
-                DataSource = "OceanServer" // Definir a fonte do dado explicitamente
+                RelativeHumidityPercent = data.RelativeHumidity,                // Metadados
+                QcFlag = data.QcFlag
             };
         }
     }

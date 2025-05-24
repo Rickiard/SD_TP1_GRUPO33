@@ -19,9 +19,8 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="System.Data.SQLite" Version="1.0.119" />
-	</ItemGroup>
-	<ItemGroup>
-	  <Protobuf Include="Protos\greet.proto" GrpcServices="Client" />
+	</ItemGroup>	<ItemGroup>
+	  <Protobuf Include="Protos\analysis.proto" GrpcServices="Client" />
 	</ItemGroup>
 
 </Project>

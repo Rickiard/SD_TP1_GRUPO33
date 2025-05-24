@@ -1,69 +1,141 @@
-﻿@model DashboardViewModel
+﻿@model OceanDashboard.Models.DashboardViewModel
 @{
     ViewData["Title"] = "Dashboard Oceânico";
 }
 
-<div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-12">
-            <h1 class="display-4 text-center mb-3">Dashboard Oceânico</h1>
-        </div>
-        <div class="col-12">
-            <div class="card shadow-sm border-0 mb-4">
-                <div class="card-body">
-                    <form id="dashboardFilters" method="get" asp-controller="Home" asp-action="Index" class="row g-3 align-items-end">
-                        <div class="col-md-3">
-                            <label for="timeRange" class="form-label fw-medium">Período de Tempo</label>
-                            <select id="timeRange" name="timeRange" class="form-select" asp-for="TimeRange">
-                                <option value="1h">Última hora</option>
-                                <option value="6h">Últimas 6 horas</option>
-                                <option value="24h">Últimas 24 horas</option>
-                                <option value="7d">Últimos 7 dias</option>
-                                <option value="30d">Últimos 30 dias</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="stationId" class="form-label fw-medium">Estação</label>
-                            <select id="stationId" name="stationId" class="form-select" asp-for="StationId">
-                                <option value="all">Todas as estações</option>
-                                @foreach (var station in Model.AvailableStations)
-                                {
-                                    <option value="@station">@station</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="resolution" class="form-label fw-medium">Resolução dos Dados</label>
-                            <select id="resolution" name="resolution" class="form-select" asp-for="Resolution">
-                                <option value="raw">Dados brutos</option>
-                                <option value="minute">Por minuto</option>
-                                <option value="hour">Por hora</option>
-                                <option value="day">Por dia</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="analysisType" class="form-label fw-medium">Tipo de Análise</label>
-                            <select id="analysisType" name="analysisType" class="form-select" asp-for="AnalysisType">
-                                <option value="none">Sem análise</option>
-                                <option value="all">Análise completa</option>
-                                <option value="wave">Análise de ondas</option>
-                                <option value="wind">Análise de ventos</option>
-                                <option value="temperature">Análise de temperatura</option>
-                            </select>
-                        </div>
-                        <div class="col-md-12 d-flex justify-content-end">
-                            <button type="submit" class="btn btn-primary me-2">
-                                <i class="bi bi-filter"></i> Aplicar Filtros
-                            </button>
-                            <a href="#" id="exportDataBtn" class="btn btn-outline-secondary">
-                                <i class="bi bi-download"></i> Exportar Dados
-                            </a>
-                        </div>
-                    </form>
+<div class="dashboard-container">
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="hero-title">
+                        <i class="bi bi-water text-primary me-3"></i>
+                        Dashboard Oceânico
+                    </h1>
+                    <p class="hero-subtitle">Monitoramento em tempo real dos dados oceanográficos</p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="status-indicator">
+                        <span class="status-dot online"></span>
+                        <span class="status-text">Sistema Online</span>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>    <!-- Summary Cards -->
+    </div>    <div class="container-fluid" style="padding-top: 2rem;">
+        <!-- Filters Section -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card filters-card shadow-lg border-0">
+                    <div class="card-header bg-gradient-primary text-white">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-funnel me-2"></i>
+                                Filtros de Dados
+                            </h5>
+                            <div class="filter-status">
+                                <span class="badge bg-light text-dark">
+                                    <i class="bi bi-activity me-1"></i>
+                                    Dados em Tempo Real
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-4">
+                        <form id="dashboardFilters" method="get" asp-controller="Home" asp-action="Index" class="filters-form">
+                            <div class="row g-4 align-items-end">
+                                <div class="col-lg-3 col-md-6">
+                                    <div class="form-group">
+                                        <label for="timeRange" class="form-label fw-semibold text-primary">
+                                            <i class="bi bi-clock me-2"></i>Período de Tempo
+                                        </label>
+                                        <select id="timeRange" name="timeRange" class="form-select modern-select" asp-for="TimeRange">
+                                            <option value="1h">Última hora</option>
+                                            <option value="6h">Últimas 6 horas</option>
+                                            <option value="24h">Últimas 24 horas</option>
+                                            <option value="7d">Últimos 7 dias</option>
+                                            <option value="30d">Últimos 30 dias</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <div class="form-group">
+                                        <label for="stationId" class="form-label fw-semibold text-primary">
+                                            <i class="bi bi-geo-alt me-2"></i>Estação
+                                        </label>
+                                        <select id="stationId" name="stationId" class="form-select modern-select" asp-for="StationId">
+                                            <option value="all">Todas as estações</option>
+                                            @foreach (var station in Model.AvailableStations)
+                                            {
+                                                <option value="@station">@station</option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-2 col-md-6">
+                                    <div class="form-group">
+                                        <label for="resolution" class="form-label fw-semibold text-primary">
+                                            <i class="bi bi-graph-up me-2"></i>Resolução
+                                        </label>
+                                        <select id="resolution" name="resolution" class="form-select modern-select" asp-for="Resolution">
+                                            <option value="raw">Brutos</option>
+                                            <option value="minute">Minuto</option>
+                                            <option value="hour">Hora</option>
+                                            <option value="day">Dia</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-2 col-md-6">
+                                    <div class="form-group">
+                                        <label for="analysisType" class="form-label fw-semibold text-primary">
+                                            <i class="bi bi-cpu me-2"></i>Análise
+                                        </label>
+                                        <select id="analysisType" name="analysisType" class="form-select modern-select" asp-for="AnalysisType">
+                                            <option value="none">Sem análise</option>
+                                            <option value="all">Completa</option>
+                                            <option value="wave">Ondas</option>
+                                            <option value="wind">Ventos</option>
+                                            <option value="temperature">Temperatura</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-2 col-md-12">
+                                    <div class="form-group">
+                                        <div class="d-grid gap-2">
+                                            <button type="submit" class="btn btn-primary btn-modern">
+                                                <i class="bi bi-search me-2"></i>Aplicar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Action Buttons Row -->
+                            <div class="row mt-4">
+                                <div class="col-12">
+                                    <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                                        <div class="action-buttons">
+                                            <button type="button" id="refreshData" class="btn btn-success btn-modern">
+                                                <i class="bi bi-arrow-clockwise me-2"></i>Atualizar
+                                            </button>
+                                            <a href="#" id="exportDataBtn" class="btn btn-outline-secondary btn-modern">
+                                                <i class="bi bi-download me-2"></i>Exportar
+                                            </a>
+                                        </div>
+                                        <div class="last-update-info">
+                                            <small class="text-muted d-flex align-items-center">
+                                                <i class="bi bi-clock-history me-2"></i>
+                                                Última atualização: <span id="lastUpdateTime" class="fw-semibold ms-1">--:--</span>
+                                            </small>
+                                        </div>                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div><!-- Summary Cards -->
     <div class="row g-4 mb-4">
         <div class="col-md-3">
             <div class="card bg-primary text-white h-100 shadow-sm">
@@ -144,8 +216,7 @@
             </div>
         </div>
     </div>
-    
-    <!-- Main Content Tabs -->
+      <!-- Main Content Tabs -->
     <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="charts-tab" data-bs-toggle="tab" data-bs-target="#charts" type="button" role="tab" aria-controls="charts" aria-selected="true">
@@ -155,11 +226,6 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="rawdata-tab" data-bs-toggle="tab" data-bs-target="#rawdata" type="button" role="tab" aria-controls="rawdata" aria-selected="false">
                 <i class="bi bi-table me-1"></i> Dados Brutos
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis" type="button" role="tab" aria-controls="analysis" aria-selected="false">
-                <i class="bi bi-graph-up me-1"></i> Análise Avançada
             </button>
         </li>
     </ul>
@@ -220,291 +286,187 @@
                 </div>
             </div>
         </div>
-        
-        <!-- Raw Data Tab -->
+          <!-- Raw Data Tab -->
         <div class="tab-pane fade" id="rawdata" role="tabpanel" aria-labelledby="rawdata-tab">
             <div class="card shadow-sm">
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover" id="oceanDataTable">
-                            <thead>
+                <div class="card-header bg-gradient-secondary text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-table me-2"></i>
+                            Dados Oceânicos Brutos
+                        </h5>
+                        <div class="data-stats">
+                            <span class="badge bg-light text-dark">
+                                <i class="bi bi-database me-1"></i>
+                                @Model.Summary.DataPointsCount registos
+                            </span>
+                            <span class="badge bg-light text-dark ms-1">
+                                <i class="bi bi-geo-alt me-1"></i>
+                                @Model.Summary.StationsCount estações
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <!-- Data Statistics Summary -->
+                    <div class="row g-0 border-bottom">
+                        <div class="col-md-3 p-3 border-end">
+                            <div class="stat-item text-center">
+                                <div class="stat-value text-primary h4">@Model.Summary.AverageWaveHeight.ToString("F1")m</div>
+                                <div class="stat-label text-muted small">Altura Média das Ondas</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 p-3 border-end">
+                            <div class="stat-item text-center">
+                                <div class="stat-value text-success h4">@Model.Summary.AverageSeaTemperature.ToString("F1")°C</div>
+                                <div class="stat-label text-muted small">Temperatura Média</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 p-3 border-end">
+                            <div class="stat-item text-center">
+                                <div class="stat-value text-info h4">@Model.Summary.AverageWindSpeed.ToString("F1") nós</div>
+                                <div class="stat-label text-muted small">Vento Médio</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 p-3">
+                            <div class="stat-item text-center">
+                                <div class="stat-value text-warning h4">@Model.Summary.MostCommonWindDirection</div>
+                                <div class="stat-label text-muted small">Direção Predominante</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Table Controls -->
+                    <div class="table-controls p-3 bg-light border-bottom">
+                        <div class="row align-items-center">
+                            <div class="col-md-6">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">
+                                        <i class="bi bi-search"></i>
+                                    </span>
+                                    <input type="text" class="form-control" id="tableSearch" placeholder="Pesquisar dados...">
+                                </div>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-primary" onclick="refreshTableData()">
+                                        <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
+                                    </button>
+                                    <a href="@Url.Action("ExportData", "Export", new { format = "csv" })" class="btn btn-outline-secondary">
+                                        <i class="bi bi-filetype-csv me-1"></i>CSV
+                                    </a>
+                                    <a href="@Url.Action("ExportData", "Export", new { format = "json" })" class="btn btn-outline-secondary">
+                                        <i class="bi bi-filetype-json me-1"></i>JSON
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Data Table -->
+                    <div class="table-responsive" style="max-height: 600px;">
+                        <table class="table table-sm table-hover mb-0" id="oceanDataTable">
+                            <thead class="table-dark sticky-top">
                                 <tr>
-                                    <th>Timestamp</th>
-                                    <th>Estação</th>
-                                    <th>Sensor</th>
-                                    <th>Altura das Ondas (m)</th>
-                                    <th>Período (s)</th>
-                                    <th>Velocidade do Vento (nós)</th>
-                                    <th>Dir. Vento</th>
-                                    <th>Temp. Mar (°C)</th>
+                                    <th class="sort-header" data-sort="timestamp">
+                                        <i class="bi bi-clock me-1"></i>Timestamp
+                                        <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sort-header" data-sort="station">
+                                        <i class="bi bi-geo-alt me-1"></i>Estação
+                                        <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sort-header" data-sort="sensor">
+                                        <i class="bi bi-cpu me-1"></i>Sensor
+                                        <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sort-header text-end" data-sort="wave-height">
+                                        <i class="bi bi-water me-1"></i>Altura Ondas (m)
+                                        <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sort-header text-end" data-sort="wave-period">
+                                        <i class="bi bi-arrow-repeat me-1"></i>Período (s)
+                                        <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sort-header text-end" data-sort="wind-speed">
+                                        <i class="bi bi-wind me-1"></i>Vento (nós)
+                                        <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sort-header text-end" data-sort="wind-direction">
+                                        <i class="bi bi-compass me-1"></i>Direção
+                                        <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
+                                    <th class="sort-header text-end" data-sort="temperature">
+                                        <i class="bi bi-thermometer me-1"></i>Temp. (°C)
+                                        <i class="bi bi-chevron-expand sort-icon"></i>
+                                    </th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                @foreach (var item in Model.OceanData.OrderByDescending(d => d.Timestamp).Take(100))
+                            <tbody id="dataTableBody">
+                                @foreach (var item in Model.OceanData.OrderByDescending(d => d.Timestamp).Take(200))
                                 {
-                                    <tr>
-                                        <td>@item.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                                        <td>@item.StationId</td>
-                                        <td>@item.SensorId</td>
-                                        <td>@item.WaveHeight.ToString("F2")</td>
-                                        <td>@item.WavePeriod.ToString("F1")</td>
-                                        <td>@item.WindSpeed.ToString("F1")</td>
-                                        <td>@item.WindDirection.ToString("F0")°</td>
-                                        <td>@item.SeaTemperature.ToString("F1")</td>
+                                    <tr class="data-row">
+                                        <td class="timestamp-cell">
+                                            <div class="d-flex flex-column">
+                                                <span class="fw-medium">@item.Timestamp.ToString("dd/MM/yyyy")</span>
+                                                <small class="text-muted">@item.Timestamp.ToString("HH:mm:ss")</small>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-primary">@item.StationId</span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary">@item.SensorId</span>
+                                        </td>
+                                        <td class="text-end">
+                                            <span class="value-display @(item.WaveHeight > 3 ? "text-danger fw-bold" : item.WaveHeight > 1.5 ? "text-warning" : "")">
+                                                @item.WaveHeight.ToString("F2")
+                                            </span>
+                                        </td>
+                                        <td class="text-end">
+                                            <span class="value-display">@item.WavePeriod.ToString("F1")</span>
+                                        </td>
+                                        <td class="text-end">
+                                            <span class="value-display @(item.WindSpeed > 25 ? "text-danger fw-bold" : item.WindSpeed > 15 ? "text-warning" : "")">
+                                                @item.WindSpeed.ToString("F1")
+                                            </span>
+                                        </td>
+                                        <td class="text-end">
+                                            <div class="d-flex align-items-center justify-content-end">
+                                                <span class="value-display me-2">@item.WindDirection.ToString("F0")°</span>
+                                                <i class="bi bi-arrow-up direction-indicator" style="transform: rotate(@(item.WindDirection)deg); color: #6c757d;"></i>
+                                            </div>
+                                        </td>
+                                        <td class="text-end">
+                                            <span class="value-display @(item.SeaTemperature > 25 ? "text-danger" : item.SeaTemperature < 15 ? "text-info" : "")">
+                                                @item.SeaTemperature.ToString("F1")
+                                            </span>
+                                        </td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
                     </div>
-                    
-                    <!-- Export options -->
-                    <div class="d-flex justify-content-end mt-3">
-                        <div class="btn-group">
-                            <a href="@Url.Action("ExportData", "Export", new { format = "csv" })" class="btn btn-sm btn-outline-secondary">
-                                <i class="bi bi-filetype-csv me-1"></i> Exportar CSV
-                            </a>
-                            <a href="@Url.Action("ExportData", "Export", new { format = "json" })" class="btn btn-sm btn-outline-secondary">
-                                <i class="bi bi-filetype-json me-1"></i> Exportar JSON
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Analysis Tab -->
-        <div class="tab-pane fade" id="analysis" role="tabpanel" aria-labelledby="analysis-tab">
-            <div class="row">
-                <div class="col-12">
-                    <div class="card shadow-sm mb-4">
-                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                            <h5 class="card-title mb-0">Análise de Padrões</h5>
-                            <span class="badge bg-light text-dark">@(Model.AnalysisType == "none" ? "Análise Desativada" : $"Analisando {Model.AnalysisType}")</span>
-                        </div>
-                        <div class="card-body">
-                            @if (Model.AnalysisType == "none")
-                            {
-                                <div class="alert alert-info">
-                                    <i class="bi bi-info-circle-fill me-2"></i> Selecione um tipo de análise nos filtros acima para visualizar padrões nos dados.
-                                </div>
-                            }
-                            else if (Model.PatternAnalysisResult == null)
-                            {
-                                <div class="alert alert-warning">
-                                    <i class="bi bi-exclamation-triangle-fill me-2"></i> Não foi possível conectar ao serviço de análise. Verifique se o RPC_DataAnalyserService está em execução.
-                                </div>
-                            }
-                            else if (!Model.PatternAnalysisResult.Success)
-                            {
-                                <div class="alert alert-danger">
-                                    <i class="bi bi-exclamation-circle-fill me-2"></i> Erro na análise: @Model.PatternAnalysisResult.ErrorMessage
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="row mb-4">
-                                    <div class="col-md-6">
-                                        <h6 class="fw-bold mb-3">Padrões Detectados</h6>
-                                        @if (Model.PatternAnalysisResult.Patterns.Any())
-                                        {
-                                            <div class="list-group">
-                                                @foreach (var pattern in Model.PatternAnalysisResult.Patterns.Take(5))
-                                                {
-                                                    <div class="list-group-item list-group-item-action">
-                                                        <div class="d-flex w-100 justify-content-between">
-                                                            <h6 class="mb-1">@pattern.Type</h6>
-                                                            <small>@pattern.ConfidenceDisplay confiança</small>
-                                                        </div>
-                                                        <p class="mb-1">@pattern.Description</p>
-                                                        <div class="d-flex justify-content-between align-items-center">
-                                                            <small class="text-muted">@pattern.DurationDisplay</small>
-                                                            <div class="intensity-wrapper">
-                                                                @Html.Raw(pattern.IntensityBar)
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                }
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <p class="text-muted">Nenhum padrão detectado</p>
-                                        }
-                                    </div>
-                                    <div class="col-md-6">
-                                        <h6 class="fw-bold mb-3">Eventos de Tempestade</h6>
-                                        @if (Model.PatternAnalysisResult.StormEvents.Any())
-                                        {
-                                            <div class="list-group">
-                                                @foreach (var storm in Model.PatternAnalysisResult.StormEvents.Take(5))
-                                                {
-                                                    <div class="list-group-item list-group-item-action">
-                                                        <div class="d-flex w-100 justify-content-between">
-                                                            <h6 class="mb-1">@storm.Description</h6>
-                                                            <small>@Html.Raw(storm.SeverityDisplay)</small>
-                                                        </div>
-                                                        <p class="mb-1">Altura máx: @storm.PeakWaveHeight.ToString("F1")m | Vento máx: @storm.PeakWindSpeed.ToString("F1") nós</p>
-                                                        <small class="text-muted">@storm.DurationDisplay em @storm.Location</small>
-                                                    </div>
-                                                }
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <p class="text-muted">Nenhum evento de tempestade detectado</p>
-                                        }
-                                    </div>
-                                </div>
-                                <div class="row">
-                                    <div class="col-12">
-                                        <h6 class="fw-bold mb-3">Anomalias Detectadas</h6>
-                                        @if (Model.PatternAnalysisResult.Anomalies.Any())
-                                        {
-                                            <div class="table-responsive">
-                                                <table class="table table-sm table-hover">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Timestamp</th>
-                                                            <th>Parâmetro</th>
-                                                            <th>Valor Esperado</th>
-                                                            <th>Valor Real</th>
-                                                            <th>Desvio</th>
-                                                            <th>Confiança</th>
-                                                            <th>Localização</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        @foreach (var anomaly in Model.PatternAnalysisResult.Anomalies)
-                                                        {
-                                                            <tr class="@(anomaly.IsSignificantAnomaly ? "table-danger" : "")">
-                                                                <td>@anomaly.Timestamp.ToString("dd/MM HH:mm")</td>
-                                                                <td>@anomaly.Parameter</td>
-                                                                <td>@anomaly.ExpectedValue.ToString("F2")</td>
-                                                                <td>@anomaly.ActualValue.ToString("F2")</td>
-                                                                <td>@anomaly.DeviationDisplay</td>
-                                                                <td>@anomaly.ConfidenceDisplay</td>
-                                                                <td>@anomaly.Location</td>
-                                                            </tr>
-                                                        }
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <p class="text-muted">Nenhuma anomalia detectada</p>
-                                        }
-                                    </div>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            </div>
-                            <select id="windowSize" class="form-select">
-                                <option value="5">5 pontos</option>
-                                <option value="10" selected>10 pontos</option>
-                                <option value="20">20 pontos</option>
-                                <option value="50">50 pontos</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <button id="detectPatterns" class="btn btn-primary w-100">Detectar Padrões</button>
-                        </div>
-                    </div>
-                    
-                    <div class="pattern-results mt-4" id="patternResults" style="display:none;">
-                        <ul class="nav nav-tabs" id="patternTabs" role="tablist">
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="patterns-tab" data-bs-toggle="tab" data-bs-target="#patterns-content" type="button" role="tab">
-                                    Padrões <span id="patternsCount" class="badge bg-primary">0</span>
-                                </button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="storms-tab" data-bs-toggle="tab" data-bs-target="#storms-content" type="button" role="tab">
-                                    Tempestades <span id="stormsCount" class="badge bg-warning text-dark">0</span>
-                                </button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="anomalies-tab" data-bs-toggle="tab" data-bs-target="#anomalies-content" type="button" role="tab">
-                                    Anomalias <span id="anomaliesCount" class="badge bg-danger">0</span>
-                                </button>
-                            </li>
-                        </ul>
-                        
-                        <div class="tab-content pt-3" id="patternTabContent">
-                            <!-- Patterns tab content -->
-                            <div class="tab-pane fade show active" id="patterns-content" role="tabpanel">
-                                <div id="patternsList" class="list-group pattern-list">
-                                    <div class="text-center text-muted py-4" id="noPatternsMessage">Nenhum padrão detectado.</div>
-                                </div>
+
+                    <!-- Table Footer with Pagination Info -->
+                    <div class="table-footer p-3 bg-light border-top">
+                        <div class="row align-items-center">
+                            <div class="col-md-6">
+                                <small class="text-muted">
+                                    Exibindo @Math.Min(200, Model.OceanData.Count) de @Model.OceanData.Count registos
+                                    @if (Model.OceanData.Count > 200)
+                                    {
+                                        <span class="text-info">• Use os filtros ou exporte para ver todos os dados</span>
+                                    }
+                                </small>
                             </div>
-                            
-                            <!-- Storms tab content -->
-                            <div class="tab-pane fade" id="storms-content" role="tabpanel">
-                                <div id="stormsList" class="list-group pattern-list">
-                                    <div class="text-center text-muted py-4" id="noStormsMessage">Nenhuma tempestade detectada.</div>
-                                </div>
-                            </div>
-                            
-                            <!-- Anomalies tab content -->
-                            <div class="tab-pane fade" id="anomalies-content" role="tabpanel">
-                                <div id="anomaliesList" class="list-group pattern-list">
-                                    <div class="text-center text-muted py-4" id="noAnomaliesMessage">Nenhuma anomalia detectada.</div>
-                                </div>
+                            <div class="col-md-6 text-end">
+                                <small class="text-muted">
+                                    <i class="bi bi-clock-history me-1"></i>
+                                    Última atualização: <span id="tableLastUpdate">@DateTime.Now.ToString("HH:mm:ss")</span>
+                                </small>
                             </div>
                         </div>
-                        
-                        <div class="d-flex justify-content-end mt-3">
-                            <button id="exportPatterns" class="btn btn-outline-secondary">
-                                <i class="bi bi-file-earmark-arrow-down"></i> Exportar Padrões (CSV)
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div id="patternLoader" class="text-center p-4 d-none">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Carregando...</span>
-                        </div>
-                        <p class="mt-2">Analisando dados e detectando padrões...</p>
-                    </div>
-                    
-                    <div id="patternError" class="alert alert-danger mt-3 d-none">
-                        <strong>Erro!</strong> <span id="patternErrorMessage"></span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="row mb-5">
-        <div class="col-12">
-            <div class="card shadow-sm">
-                <div class="card-header d-flex justify-content-between align-items-center bg-light">
-                    <h5 class="card-title mb-0">Todos os Registos</h5>
-                    <span class="badge bg-primary">Total: <span id="totalRegistos">@Model.Count</span> registos</span>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                        <table class="table table-striped table-sm align-middle" id="tabelaRegistos">
-                            <thead class="table-secondary">
-                                <tr>
-                                    <th>Data/Hora</th>
-                                    <th>Localização</th>
-                                    <th>Temperatura (°C)</th>
-                                    <th>Altura (m)</th>
-                                    <th>Período (s)</th>
-                                    <th>Direção (°)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- O conteúdo será preenchido via JS para suportar paginação -->
-                            </tbody>
-                        </table>
-                        <nav>
-                            <ul class="pagination justify-content-center mt-3" id="paginacaoTabela"></ul>
-                        </nav>
-                        <div id="mensagemSemDados" class="text-center text-muted mt-3" style="display:none;">Sem registos para mostrar.</div>
                     </div>
                 </div>
             </div>
@@ -516,69 +478,209 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     <style>
+        /* Enhanced Dashboard Styles */
         .dashboard-chart {
-            min-height: 300px;
-            height: 320px;
-            max-height: 350px;
+            min-height: 350px;
+            height: 370px;
+            max-height: 400px;
             width: 100%;
+            position: relative;
         }
+        
         .dashboard-chart canvas {
             width: 100% !important;
             height: 100% !important;
+            border-radius: 0.5rem;
         }
         
-        /* Pattern detection styles */
+        /* Advanced Pattern Styles */
         .pattern-list {
-            max-height: 400px;
+            max-height: 450px;
             overflow-y: auto;
+            padding: 0.5rem;
+        }
+        
+        .list-group-item {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0,0,0,0.05);
+            border-radius: 0.75rem !important;
+            margin-bottom: 0.75rem;
+            padding: 1.25rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .list-group-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            background: white;
         }
         
         .pattern-item {
-            border-left: 4px solid #0d6efd;
-            margin-bottom: 12px;
-            transition: all 0.2s ease;
+            border-left: 5px solid var(--primary-color);
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%);
         }
         
-        .pattern-item:hover {
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        .pattern-item.trend-pattern { 
+            border-left-color: #3b82f6;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%);
         }
         
-        .pattern-item.trend-pattern { border-left-color: #0d6efd; }
-        .pattern-item.cycle-pattern { border-left-color: #6f42c1; }
+        .pattern-item.cycle-pattern { 
+            border-left-color: #8b5cf6;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%);
+        }
         
         .storm-item {
-            border-left: 4px solid #fd7e14;
-            margin-bottom: 12px;
+            border-left: 5px solid #f59e0b;
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.05) 0%, rgba(251, 146, 60, 0.05) 100%);
         }
         
         .anomaly-item {
-            border-left: 4px solid #dc3545;
-            margin-bottom: 12px;
+            border-left: 5px solid #ef4444;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(248, 113, 113, 0.05) 100%);
         }
         
         .anomaly-item.significant {
-            background-color: rgba(220, 53, 69, 0.1);
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(248, 113, 113, 0.1) 100%);
+            border-left-color: #dc2626;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.1);
         }
         
         .intensity-bar {
             display: inline-block;
-            width: 8px;
-            height: 16px;
-            background-color: #0d6efd;
-            margin-right: 2px;
-            border-radius: 1px;
+            width: 10px;
+            height: 18px;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            margin-right: 3px;
+            border-radius: 2px;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
         }
         
         .severity-indicator {
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-weight: bold;
+            padding: 0.4rem 0.8rem;
+            border-radius: 1.5rem;
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
         }
         
-        .severity-indicator.low { background-color: #0d6efd; color: white; }
-        .severity-indicator.moderate-low { background-color: #0dcaf0; color: black; }
-        .severity-indicator.moderate { background-color: #ffc107; color: black; }
-        .severity-indicator.moderate-high { background-color: #fd7e14; color: white; }
-        .severity-indicator.high { background-color: #dc3545; color: white; }
+        .severity-indicator.low { 
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); 
+            color: white; 
+        }
+        .severity-indicator.moderate-low { 
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); 
+            color: white; 
+        }
+        .severity-indicator.moderate { 
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); 
+            color: white; 
+        }
+        .severity-indicator.moderate-high { 
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); 
+            color: white; 
+        }
+        .severity-indicator.high { 
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); 
+            color: white; 
+        }
+        
+        /* Enhanced Auto-refresh Styles */
+        .spin {
+            animation: spin 1.5s ease-in-out infinite;
+        }
+          @@keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .auto-refresh-card {
+            border-left: 4px solid #10b981;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(5, 150, 105, 0.05) 100%);
+        }
+        
+        .auto-refresh-card.disabled {
+            border-left-color: #6b7280;
+            background: linear-gradient(135deg, rgba(107, 114, 128, 0.05) 0%, rgba(75, 85, 99, 0.05) 100%);
+        }
+        
+        /* Enhanced Form Controls */
+        .form-control:focus, .form-select:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+            transform: translateY(-1px);
+        }
+        
+        /* Enhanced Buttons */
+        .btn {
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        /* Enhanced Cards */
+        .card-header.bg-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+        }
+        
+        .card-header.bg-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+        }
+        
+        .card-header.bg-warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+        }
+        
+        .card-header.bg-info {
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%) !important;
+        }
+        
+        .card-header.bg-dark {
+            background: linear-gradient(135deg, #374151 0%, #1f2937 100%) !important;
+        }
+        
+        /* Enhanced Table */
+        .table-striped tbody tr:nth-of-type(odd) {
+            background-color: rgba(59, 130, 246, 0.02);
+        }
+        
+        .table-hover tbody tr:hover {
+            background-color: rgba(59, 130, 246, 0.08);
+        }
+        
+        /* Loading Animation */
+        .spinner-border.text-primary {
+            border-color: rgba(59, 130, 246, 0.2);
+            border-top-color: #3b82f6;
+        }
+        
+        /* Pagination Enhancement */
+        .pagination .page-link {
+            border-radius: 0.5rem;
+            margin: 0 0.25rem;
+            border: 2px solid #e5e7eb;
+            color: #374151;
+            transition: all 0.2s ease;
+        }
+        
+        .pagination .page-link:hover {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+            transform: translateY(-1px);
+        }
+        
+        .pagination .page-item.active .page-link {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            border-color: #3b82f6;
+        }
     </style>
 }

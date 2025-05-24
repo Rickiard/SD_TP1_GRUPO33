@@ -28,25 +28,58 @@ namespace OceanDashboard.Services
         {
             _connectionString = connectionString;
             _logger = logger;
-        }
-
-        /// <summary>
+        }        /// <summary>
         /// Checks if the database contains the dados_wavy table used by OceanServer
+        /// MODIFICADO: Sempre retorna false para forçar uso da tabela ocean_data
         /// </summary>
         public bool HasOceanServerFormat()
         {
             try
             {
+                _logger.LogInformation("=== VERIFICANDO FORMATO OCEANSERVER ===");
+                _logger.LogInformation("String de conexão: {ConnectionString}", _connectionString);
+                
                 using (var connection = new SqliteConnection(_connectionString))
                 {
                     connection.Open();
+                    _logger.LogInformation("Conexão aberta com sucesso");
                     
-                    // Check if the dados_wavy table exists
+                    // Primeiro, listar todas as tabelas disponíveis
+                    var listTablesCmd = connection.CreateCommand();
+                    listTablesCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table'";
+                    
+                    var allTables = new List<string>();
+                    using (var reader = listTablesCmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            allTables.Add(reader.GetString(0));
+                        }
+                    }
+                    
+                    _logger.LogInformation("Tabelas encontradas no banco: {Tables}", string.Join(", ", allTables));
+                    
+                    // Verificar se existe a tabela ocean_data
                     var command = connection.CreateCommand();
-                    command.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='dados_wavy'";
+                    command.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='ocean_data'";
+                    var oceanDataResult = command.ExecuteScalar();
+                    bool hasOceanDataTable = oceanDataResult != null && oceanDataResult.ToString() == "ocean_data";
                     
-                    var result = command.ExecuteScalar();
-                    return result != null && result.ToString() == "dados_wavy";
+                    _logger.LogInformation("Found ocean_data table: {HasOceanDataTable}", hasOceanDataTable);
+                    
+                    if (hasOceanDataTable)
+                    {
+                        var countCmd = connection.CreateCommand();
+                        countCmd.CommandText = "SELECT COUNT(*) FROM ocean_data";
+                        var count = countCmd.ExecuteScalar();
+                        _logger.LogInformation("Tabela ocean_data tem {Count} registros", count);
+                    }
+                    
+                    // FORÇAR USO DA TABELA ocean_data - sempre retorna false
+                    _logger.LogInformation("=== FORÇANDO USO DA TABELA ocean_data ===");
+                    _logger.LogInformation("=== RESULTADO: HasOceanServerFormat = false (forçado) ===");
+                    
+                    return false;
                 }
             }
             catch (Exception ex)

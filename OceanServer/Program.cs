@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Net.Client;
-using RPC_DataAnalyserServiceClient;
+using RPC_DataAnalyserService;
 using System.Net.Http;
 using Grpc.Core;
 using System.Globalization;
@@ -248,10 +248,8 @@ class TCPServer
                 Console.WriteLine($"Tentando conectar ao serviço RPC_DataAnalyserService em {_rpcServiceUrl}... (tentativa {connectionRetries + 1} de {maxConnectionRetries})");
                 // Use the URL that was successful in the availability check
                 // Criamos um escopo para o canal e o cliente para garantir que eles sejam fechados após o uso
-                using var channel = GrpcChannel.ForAddress(_rpcServiceUrl, channelOptions);
-                var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
-                // Parse the CSV data to create sensor data points - with better error handling
-                var dataPoints = new List<RPC_DataAnalyserServiceClient.SensorData>();
+                using var channel = GrpcChannel.ForAddress(_rpcServiceUrl, channelOptions);                var client = new RPC_DataAnalyserService.DataAnalysisService.DataAnalysisServiceClient(channel);                // Parse the WAVY CSV data format - with better error handling
+                var dataPoints = new List<RPC_DataAnalyserService.SensorData>();
             
                 try
                 {
@@ -259,24 +257,86 @@ class TCPServer
                     foreach (var line in lines)
                     {
                         string[] values = line.Split(';');
-                        if (values.Length >= 4)
+                        // WAVY CSV format: M1;longitude;latitude;timestamp;pressure;windDir;windSpeed;gust;waveHeight;wavePeriod;waveDir;maxWaveHeight;airTemp;dewPoint;seaTemp;humidity;qcFlag
+                        if (values.Length >= 16)
                         {
                             try
                             {
-                                var sensorData = new RPC_DataAnalyserServiceClient.SensorData
+                                string stationId = values[0];
+                                string timestamp = values[3];
+                                
+                                // Create sensor data points for each valid measurement
+                                var sensorDataList = new List<RPC_DataAnalyserService.SensorData>();
+                                  // Create a single consolidated sensor data entry for this line
+                                double longitude = double.TryParse(values[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double lon) ? lon : 0;
+                                double latitude = double.TryParse(values[2], NumberStyles.Any, CultureInfo.InvariantCulture, out double lat) ? lat : 0;
+                                  var sensorData = new RPC_DataAnalyserService.SensorData
                                 {
-                                    SensorId = values[0],
-                                    Value = double.Parse(values[1], CultureInfo.InvariantCulture),
-                                    Timestamp = values[2],
-                                    Unit = values[3]
+                                    StationId = stationId,
+                                    Timestamp = timestamp,
+                                    Longitude = longitude,
+                                    Latitude = latitude
                                 };
-                                dataPoints.Add(sensorData);
+                                
+                                bool hasValidData = false;
+                                
+                                // Atmospheric pressure (index 4)
+                                if (double.TryParse(values[4], NumberStyles.Any, CultureInfo.InvariantCulture, out double pressure) && !double.IsNaN(pressure))
+                                {
+                                    sensorData.AtmosphereMb = pressure;
+                                    hasValidData = true;
+                                }
+                                
+                                // Wind direction (index 5)
+                                if (double.TryParse(values[5], NumberStyles.Any, CultureInfo.InvariantCulture, out double windDir) && !double.IsNaN(windDir))
+                                {
+                                    sensorData.WindDirectionDegrees = windDir;
+                                    hasValidData = true;
+                                }
+                                
+                                // Wind speed (index 6)
+                                if (double.TryParse(values[6], NumberStyles.Any, CultureInfo.InvariantCulture, out double windSpeed) && !double.IsNaN(windSpeed))
+                                {
+                                    sensorData.WindSpeedKn = windSpeed;
+                                    hasValidData = true;
+                                }
+                                
+                                // Gust (index 7)
+                                if (double.TryParse(values[7], NumberStyles.Any, CultureInfo.InvariantCulture, out double gust) && !double.IsNaN(gust))
+                                {
+                                    sensorData.GustKn = gust;
+                                    hasValidData = true;
+                                }
+                                
+                                // Air temperature (index 12)
+                                if (double.TryParse(values[12], NumberStyles.Any, CultureInfo.InvariantCulture, out double airTemp) && !double.IsNaN(airTemp))
+                                {
+                                    sensorData.AirTemperatureC = airTemp;
+                                    hasValidData = true;
+                                }
+                                
+                                // Relative humidity (index 15)
+                                if (double.TryParse(values[15], NumberStyles.Any, CultureInfo.InvariantCulture, out double humidity) && !double.IsNaN(humidity))
+                                {
+                                    sensorData.RelativeHumidityPercent = humidity;
+                                    hasValidData = true;
+                                }
+                                
+                                // Add the sensor data if we have at least one valid measurement
+                                if (hasValidData)
+                                {
+                                    dataPoints.Add(sensorData);
+                                }
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"Erro ao processar linha CSV: {ex.Message}");
+                                Console.WriteLine($"Erro ao processar linha CSV: {line} - {ex.Message}");
                                 // Continue processando as próximas linhas
                             }
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Linha CSV com formato inválido (poucos campos): {line}");
                         }
                     }
                 }
@@ -287,9 +347,8 @@ class TCPServer
                 }
                 
                 if (dataPoints.Count > 0)
-                {
-                    // Create the analysis request
-                    var request = new RPC_DataAnalyserServiceClient.AnalysisRequest
+                {                    // Create the analysis request
+                    var request = new RPC_DataAnalyserService.AnalysisRequest
                     {
                         AnalysisType = "mean",
                         TimeRange = "1h"
@@ -495,16 +554,15 @@ class TCPServer
                     // Create a channel to the service
                     var channelOptions = new GrpcChannelOptions { HttpClient = httpClient };
                     using var channel = GrpcChannel.ForAddress(url, channelOptions);
-                    
-                    // Try to create a client - this will throw an exception if the service is not available
-                    var client = new RPC_DataAnalyserServiceClient.DataAnalysisService.DataAnalysisServiceClient(channel);
+                      // Try to create a client - this will throw an exception if the service is not available
+                    var client = new RPC_DataAnalyserService.DataAnalysisService.DataAnalysisServiceClient(channel);
                     
                     // Try to make a simple call with a short deadline to check if the service is responsive
                     var deadline = DateTime.UtcNow.AddSeconds(5);
                     var callOptions = new CallOptions(deadline: deadline);
                     
                     // Create a minimal request just to test connectivity
-                    var request = new RPC_DataAnalyserServiceClient.AnalysisRequest
+                    var request = new RPC_DataAnalyserService.AnalysisRequest
                     {
                         AnalysisType = "ping",
                         TimeRange = "1s"

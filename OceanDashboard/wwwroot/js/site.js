@@ -32,45 +32,59 @@ function renderTabelaPaginada() {
     const tableBody = document.querySelector('table tbody');
     const mensagemSemDados = document.getElementById('mensagemSemDados');
     const totalRegistos = document.getElementById('totalRegistos');
+    const paginacaoTabela = document.getElementById('paginacaoTabela');
+    
     if (!tableData.length) {
-        tableBody.innerHTML = '';
-        mensagemSemDados.style.display = 'block';
-        totalRegistos.textContent = '0';
-        document.getElementById('paginacaoTabela').innerHTML = '';
+        if (tableBody) tableBody.innerHTML = '';
+        if (mensagemSemDados) mensagemSemDados.style.display = 'block';
+        if (totalRegistos) totalRegistos.textContent = '0';
+        if (paginacaoTabela) paginacaoTabela.innerHTML = '';
         return;
     }
-    mensagemSemDados.style.display = 'none';
-    totalRegistos.textContent = tableData.length;
-    // Mostrar todos os registos sem paginação
-    tableBody.innerHTML = tableData.map(item => `
-        <tr>
-            <td>${new Date(item.timestamp).toLocaleString('pt-PT')}</td>
-            <td>${item.location || ''}</td>
-            <td>${item.waveHeight !== undefined && item.waveHeight !== null ? item.waveHeight.toFixed(2) : 'N/A'}</td>
-            <td>${item.wavePeriod !== undefined && item.wavePeriod !== null ? item.wavePeriod.toFixed(2) : 'N/A'}</td>
-            <td>${item.waveDirection !== undefined && item.waveDirection !== null ? item.waveDirection.toFixed(2) : 'N/A'}</td>
-            <td>${item.seaTemperature !== undefined && item.seaTemperature !== null ? item.seaTemperature.toFixed(2) : 'N/A'}</td>
-        </tr>
-    `).join('');
+    if (mensagemSemDados) mensagemSemDados.style.display = 'none';
+    if (totalRegistos) totalRegistos.textContent = tableData.length;    // Mostrar todos os registos sem paginação
+    if (tableBody) {
+        tableBody.innerHTML = tableData.map(item => `
+            <tr>
+                <td>${new Date(item.timestamp).toLocaleString('pt-PT')}</td>
+                <td>${item.location || ''}</td>
+                <td>${item.waveHeight !== undefined && item.waveHeight !== null ? item.waveHeight.toFixed(2) : 'N/A'}</td>
+                <td>${item.wavePeriod !== undefined && item.wavePeriod !== null ? item.wavePeriod.toFixed(2) : 'N/A'}</td>
+                <td>${item.waveDirection !== undefined && item.waveDirection !== null ? item.waveDirection.toFixed(2) : 'N/A'}</td>
+                <td>${item.seaTemperature !== undefined && item.seaTemperature !== null ? item.seaTemperature.toFixed(2) : 'N/A'}</td>
+            </tr>
+        `).join('');
+    }
     // Esconder paginação
-    document.getElementById('paginacaoTabela').innerHTML = '';
+    if (paginacaoTabela) paginacaoTabela.innerHTML = '';
 }
 
 // Inicialização dos gráficos se não existirem
 document.addEventListener('DOMContentLoaded', function() {
     // Inicializar gráficos se não existirem
     if (!window.charts) {
-        window.charts = [];
-        const chartConfigs = [
+        window.charts = [];        const chartConfigs = [
             { id: 'waveHeightChart', label: 'Altura das Ondas', color: '#007bff', field: 'wave_height', dataField: 'waveHeight' },
-            { id: 'waveDirectionChart', label: 'Direção das Ondas', color: '#17c9e6', field: 'wave_direction', dataField: 'waveDirection' },
+            { id: 'windDirectionChart', label: 'Direção do Vento', color: '#17c9e6', field: 'wind_direction', dataField: 'waveDirection' },
             { id: 'temperatureChart', label: 'Temperatura da Água', color: '#198754', field: 'temperature', dataField: 'seaTemperature' },
-            { id: 'wavePeriodChart', label: 'Período das Ondas', color: '#ffc107', field: 'wave_period', dataField: 'wavePeriod' }
-        ];
-        chartConfigs.forEach(cfg => {
-            const ctx = document.getElementById(cfg.id)?.getContext('2d');
-            if (ctx) {
-                window.charts.push(new Chart(ctx, {
+            { id: 'windSpeedChart', label: 'Velocidade do Vento', color: '#ffc107', field: 'wind_speed', dataField: 'windSpeed' }
+        ];        chartConfigs.forEach(cfg => {
+            console.log('Initializing chart:', cfg.id);
+            const element = document.getElementById(cfg.id);
+            
+            if (!element) {
+                console.error('Canvas element not found:', cfg.id);
+                return;
+            }
+            
+            const ctx = element.getContext('2d');
+            if (!ctx) {
+                console.error('Could not get 2d context for:', cfg.id);
+                return;
+            }
+            
+            try {
+                const chart = new Chart(ctx, {
                     type: 'line',
                     data: { 
                         labels: [], 
@@ -86,6 +100,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     options: {
                         responsive: true,
+                        maintainAspectRatio: false,
                         plugins: {
                             legend: { display: false },
                             tooltip: { 
@@ -103,10 +118,16 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                         },
                         locale: 'pt-PT',
-                        scales: { x: { display: true }, y: { display: true } },
+                        scales: { x: { display: true }, y: { display: true, beginAtZero: false } },
                         dataField: cfg.field  // Store the data field for pattern matching
                     }
-                }));
+                });
+                
+                window.charts.push(chart);
+                console.log('Chart created successfully:', cfg.id);
+                
+            } catch (error) {
+                console.error('Error creating chart', cfg.id, ':', error);
             }
         });
     }
@@ -121,7 +142,133 @@ document.addEventListener('DOMContentLoaded', function() {
     if (exportBtn) {
         exportBtn.addEventListener('click', exportarCSV);
     }
+    
+    // Auto-refresh functionality
+    initAutoRefresh();
 });
+
+// Auto-refresh variables and functions
+let autoRefreshInterval = null;
+let autoRefreshCountdown = null;
+let autoRefreshTimeLeft = 0;
+
+function initAutoRefresh() {
+    const autoRefreshToggle = document.getElementById('autoRefreshToggle');
+    const refreshInterval = document.getElementById('refreshInterval');
+    const autoRefreshStatus = document.getElementById('autoRefreshStatus');
+    const refreshCountdown = document.getElementById('refreshCountdown');
+    const lastUpdateTime = document.getElementById('lastUpdateTime');
+    
+    if (!autoRefreshToggle || !refreshInterval || !autoRefreshStatus) {
+        return; // Elements not found, skip auto-refresh setup
+    }
+    
+    // Update last update time
+    updateLastUpdateTime();
+    
+    // Toggle auto-refresh
+    autoRefreshToggle.addEventListener('change', function() {
+        if (this.checked) {
+            startAutoRefresh();
+        } else {
+            stopAutoRefresh();
+        }
+    });
+    
+    // Change interval
+    refreshInterval.addEventListener('change', function() {
+        if (autoRefreshToggle.checked) {
+            stopAutoRefresh();
+            startAutoRefresh();
+        }
+    });
+      function startAutoRefresh() {
+        const intervalSeconds = parseInt(refreshInterval.value);
+        autoRefreshTimeLeft = intervalSeconds;
+        
+        if (autoRefreshStatus) {
+            autoRefreshStatus.textContent = `Ativa (${intervalSeconds}s)`;
+            autoRefreshStatus.className = 'text-success fw-medium';
+        }
+        if (refreshCountdown) refreshCountdown.style.display = 'inline';
+          // Start countdown
+        autoRefreshCountdown = setInterval(function() {
+            autoRefreshTimeLeft--;
+            if (refreshCountdown) refreshCountdown.textContent = autoRefreshTimeLeft + 's';
+            
+            if (autoRefreshTimeLeft <= 0) {
+                autoRefreshTimeLeft = intervalSeconds;
+            }
+        }, 1000);
+          // Start auto-refresh
+        autoRefreshInterval = setInterval(function() {
+            console.log('Auto-refreshing dashboard data...');
+            atualizarDashboardWithConnectionCheck();
+            autoRefreshTimeLeft = intervalSeconds; // Reset countdown
+        }, intervalSeconds * 1000);
+        
+        // Initial countdown display
+        if (refreshCountdown) refreshCountdown.textContent = autoRefreshTimeLeft + 's';
+    }
+      function stopAutoRefresh() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+        
+        if (autoRefreshCountdown) {
+            clearInterval(autoRefreshCountdown);
+            autoRefreshCountdown = null;
+        }
+        
+        if (autoRefreshStatus) {
+            autoRefreshStatus.textContent = 'Desativada';
+            autoRefreshStatus.className = 'text-muted';
+        }
+        if (refreshCountdown) refreshCountdown.style.display = 'none';
+    }
+}
+
+function updateLastUpdateTime() {
+    const lastUpdateTime = document.getElementById('lastUpdateTime');
+    if (lastUpdateTime) {
+        const now = new Date();
+        lastUpdateTime.textContent = now.toLocaleTimeString('pt-PT');
+    }
+}
+
+function showLoadingIndicator(show) {
+    const refreshButton = document.getElementById('refreshData');
+    const autoRefreshStatus = document.getElementById('autoRefreshStatus');
+    
+    if (show) {
+        if (refreshButton) {
+            refreshButton.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> Carregando...';
+            refreshButton.disabled = true;
+        }
+        
+        if (autoRefreshStatus && autoRefreshStatus.textContent !== 'Desativada') {
+            autoRefreshStatus.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> Atualizando...';
+        }
+    } else {
+        if (refreshButton) {
+            refreshButton.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Atualizar Agora';
+            refreshButton.disabled = false;
+        }
+        
+        const autoRefreshToggle = document.getElementById('autoRefreshToggle');
+        const refreshInterval = document.getElementById('refreshInterval');
+        
+        if (autoRefreshStatus && autoRefreshToggle?.checked) {
+            const intervalSeconds = parseInt(refreshInterval?.value || 30);
+            autoRefreshStatus.innerHTML = `Ativa (${intervalSeconds}s)`;
+            autoRefreshStatus.className = 'text-success fw-medium';
+        } else if (autoRefreshStatus) {
+            autoRefreshStatus.textContent = 'Desativada';
+            autoRefreshStatus.className = 'text-muted';
+        }
+    }
+}
 
 // Mensagem amigável nos gráficos quando não há dados
 function mostrarMensagemSemDadosNosGraficos() {
@@ -143,13 +290,23 @@ function mostrarMensagemSemDadosNosGraficos() {
 
 // Função para atualizar os gráficos com novos dados
 function atualizarDashboard() {
+    console.log('Updating dashboard...');
+    console.log('Charts available:', window.charts?.length || 0);
+    
     const timeRange = document.getElementById('timeRange')?.value || '24h';
     const location = document.getElementById('location')?.value || 'all';
     const resolution = document.getElementById('resolution')?.value || 'hour';
+    
+    // Show loading indicator
+    showLoadingIndicator(true);
 
     fetch(`/Home/GetLatestData?timeRange=${timeRange}&location=${encodeURIComponent(location)}&resolution=${resolution}`)
-        .then(response => response.json())
-        .then(data => {
+        .then(response => response.json())        .then(data => {
+            console.log('Data received:', data.length, 'records');
+            
+            // Ensure charts are initialized before updating
+            ensureChartsInitialized();
+            
             window.tableData = data;
             window.paginaAtual = 1;
             renderTabelaPaginada();
@@ -159,36 +316,63 @@ function atualizarDashboard() {
                 return;
             }            const timestamps = data.map(d => new Date(d.timestamp).toLocaleString('pt-PT'));
             const waveHeights = data.map(d => d.waveHeight !== null && d.waveHeight !== undefined ? d.waveHeight : 0);
-            const waveDirections = data.map(d => d.waveDirection !== null && d.waveDirection !== undefined ? d.waveDirection : 0);            const temperatures = data.map(d => d.seaTemperature !== null && d.seaTemperature !== undefined ? d.seaTemperature : 0); 
-            const wavePeriods = data.map(d => d.wavePeriod !== null && d.wavePeriod !== undefined ? d.wavePeriod : 0);
-            
-            if (window.charts && Array.isArray(window.charts)) {
-                window.charts.forEach(chart => {
+            const waveDirections = data.map(d => d.waveDirection !== null && d.waveDirection !== undefined ? d.waveDirection : 0);            
+            const temperatures = data.map(d => d.seaTemperature !== null && d.seaTemperature !== undefined ? d.seaTemperature : 0); 
+            const windSpeeds = data.map(d => d.windSpeed !== null && d.windSpeed !== undefined ? d.windSpeed : 0);
+              if (window.charts && Array.isArray(window.charts)) {
+                console.log('Updating', window.charts.length, 'charts with', data.length, 'data points');
+                
+                window.charts.forEach((chart, index) => {
+                    console.log(`Updating chart ${index + 1}:`, chart.canvas.id);
+                    
                     switch (chart.canvas.id) {
                         case 'waveHeightChart':
                             chart.data.labels = timestamps;
                             chart.data.datasets[0].data = waveHeights;
+                            console.log('Wave heights:', waveHeights.slice(0, 5), '...');
                             break;
-                        case 'waveDirectionChart':
+                        case 'windDirectionChart':
                             chart.data.labels = timestamps;
                             chart.data.datasets[0].data = waveDirections;
+                            console.log('Wave directions:', waveDirections.slice(0, 5), '...');
                             break;
                         case 'temperatureChart':
                             chart.data.labels = timestamps;
                             chart.data.datasets[0].data = temperatures;
+                            console.log('Temperatures:', temperatures.slice(0, 5), '...');
                             break;
-                        case 'wavePeriodChart':
+                        case 'windSpeedChart':
                             chart.data.labels = timestamps;
-                            chart.data.datasets[0].data = wavePeriods;
+                            chart.data.datasets[0].data = windSpeeds;
+                            console.log('Wind speeds:', windSpeeds.slice(0, 5), '...');
                             break;
                     }
                     chart.options.locale = 'pt-PT';
-                    chart.update();
+                    chart.update();                
                 });
+            } else {
+                console.error('No charts available for update');
+            }// Update last refresh time
+            updateLastUpdateTime();
+            
+            // Hide loading indicator
+            showLoadingIndicator(false);
+            
+            // Show success notification only for manual refresh (not auto-refresh)
+            const autoRefreshToggle = document.getElementById('autoRefreshToggle');
+            if (!autoRefreshToggle?.checked) {
+                showNotification(`Dashboard atualizado com ${data.length} registos`, 'success', 2000);
             }
         })
         .catch(error => {
             console.error('Erro ao atualizar dados:', error);
+            
+            // Hide loading indicator
+            showLoadingIndicator(false);
+            
+            // Show error notification
+            showNotification('Erro ao carregar dados do servidor', 'danger', 5000);
+            
             document.querySelectorAll('.chart-container').forEach(container => {
                 container.innerHTML = '<div class="alert alert-danger">' +
                     '<h5>Erro ao carregar dados</h5>' +
@@ -248,11 +432,14 @@ function detectPatterns() {
     const timeRange = document.getElementById('timeRange').value;
     const location = document.getElementById('location').value;
     const windowSize = document.getElementById('windowSize').value;
+      // Show loader, hide results and error
+    const patternLoader = document.getElementById('patternLoader');
+    const patternResults = document.getElementById('patternResults');
+    const patternError = document.getElementById('patternError');
     
-    // Show loader, hide results and error
-    document.getElementById('patternLoader').classList.remove('d-none');
-    document.getElementById('patternResults').style.display = 'none';
-    document.getElementById('patternError').classList.add('d-none');
+    if (patternLoader) patternLoader.classList.remove('d-none');
+    if (patternResults) patternResults.style.display = 'none';
+    if (patternError) patternError.classList.add('d-none');
     
     // Build API URL
     const url = `/api/Analytics/detect-patterns?patternType=${patternType}&dataField=${dataField}&timeRange=${timeRange}&location=${location}&windowSize=${windowSize}`;
@@ -286,21 +473,27 @@ function detectPatterns() {
 // Display pattern detection results
 function displayPatternResults(data) {
     // Show results container
-    document.getElementById('patternResults').style.display = 'block';
+    const patternResults = document.getElementById('patternResults');
+    if (patternResults) patternResults.style.display = 'block';
     
     // Update counts in tabs
-    document.getElementById('patternsCount').textContent = data.patterns.length;
-    document.getElementById('stormsCount').textContent = data.stormEvents.length;
-    document.getElementById('anomaliesCount').textContent = data.anomalies.length;
+    const patternsCount = document.getElementById('patternsCount');
+    const stormsCount = document.getElementById('stormsCount');
+    const anomaliesCount = document.getElementById('anomaliesCount');
+    
+    if (patternsCount) patternsCount.textContent = data.patterns.length;
+    if (stormsCount) stormsCount.textContent = data.stormEvents.length;
+    if (anomaliesCount) anomaliesCount.textContent = data.anomalies.length;
     
     // Display patterns
     const patternsContainer = document.getElementById('patternsList');
+    const noPatternsMessage = document.getElementById('noPatternsMessage');
+    
     if (data.patterns.length === 0) {
-        document.getElementById('noPatternsMessage').style.display = 'block';
-        patternsContainer.innerHTML = '';
-    } else {
-        document.getElementById('noPatternsMessage').style.display = 'none';
-        patternsContainer.innerHTML = data.patterns.map(pattern => {
+        if (noPatternsMessage) noPatternsMessage.style.display = 'block';
+        if (patternsContainer) patternsContainer.innerHTML = '';    } else {
+        if (noPatternsMessage) noPatternsMessage.style.display = 'none';
+        if (patternsContainer) patternsContainer.innerHTML = data.patterns.map(pattern => {
             const patternTypeClass = pattern.type.includes('tendência') ? 'trend-pattern' : 
                                      pattern.type.includes('cíclico') ? 'cycle-pattern' : '';
             return `
@@ -319,15 +512,16 @@ function displayPatternResults(data) {
             `;
         }).join('');
     }
-    
-    // Display storms
+      // Display storms
     const stormsContainer = document.getElementById('stormsList');
+    const noStormsMessage = document.getElementById('noStormsMessage');
+    
     if (data.stormEvents.length === 0) {
-        document.getElementById('noStormsMessage').style.display = 'block';
-        stormsContainer.innerHTML = '';
+        if (noStormsMessage) noStormsMessage.style.display = 'block';
+        if (stormsContainer) stormsContainer.innerHTML = '';
     } else {
-        document.getElementById('noStormsMessage').style.display = 'none';
-        stormsContainer.innerHTML = data.stormEvents.map(storm => {
+        if (noStormsMessage) noStormsMessage.style.display = 'none';
+        if (stormsContainer) stormsContainer.innerHTML = data.stormEvents.map(storm => {
             return `
                 <div class="list-group-item storm-item">
                     <div class="d-flex w-100 justify-content-between">
@@ -637,4 +831,440 @@ function exportPatterns() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+// Função para forçar inicialização de gráficos se necessário
+function ensureChartsInitialized() {
+    if (!window.charts || window.charts.length === 0) {
+        console.log('Charts not initialized, forcing initialization...');
+        
+        const chartConfigs = [
+            { id: 'waveHeightChart', label: 'Altura das Ondas', color: '#007bff', field: 'wave_height', dataField: 'waveHeight' },
+            { id: 'windDirectionChart', label: 'Direção do Vento', color: '#17c9e6', field: 'wind_direction', dataField: 'waveDirection' },
+            { id: 'temperatureChart', label: 'Temperatura da Água', color: '#198754', field: 'temperature', dataField: 'seaTemperature' },
+            { id: 'windSpeedChart', label: 'Velocidade do Vento', color: '#ffc107', field: 'wind_speed', dataField: 'windSpeed' }
+        ];
+        
+        window.charts = [];
+        
+        chartConfigs.forEach(cfg => {
+            console.log('Force initializing chart:', cfg.id);
+            const element = document.getElementById(cfg.id);
+            
+            if (!element) {
+                console.error('Canvas element not found:', cfg.id);
+                return;
+            }
+            
+            const ctx = element.getContext('2d');
+            if (!ctx) {
+                console.error('Could not get 2d context for:', cfg.id);
+                return;
+            }
+            
+            try {
+                const chart = new Chart(ctx, {
+                    type: 'line',
+                    data: { 
+                        labels: [], 
+                        datasets: [
+                            { 
+                                label: cfg.label, 
+                                data: [], 
+                                borderColor: cfg.color, 
+                                backgroundColor: cfg.color + '33', 
+                                tension: 0.2 
+                            }
+                        ] 
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { 
+                                enabled: true,
+                                callbacks: {
+                                    afterBody: function(context) {
+                                        return getPatternInfoForTooltip(context[0].label, cfg.field);
+                                    }
+                                }
+                            },
+                            title: { display: false },
+                            annotation: {
+                                annotations: {}
+                            }
+                        },
+                        locale: 'pt-PT',
+                        scales: { x: { display: true }, y: { display: true, beginAtZero: false } },
+                        dataField: cfg.field
+                    }
+                });
+                
+                window.charts.push(chart);
+                console.log('Chart force-created successfully:', cfg.id);
+                
+            } catch (error) {
+                console.error('Error force-creating chart', cfg.id, ':', error);
+            }
+        });
+    }
+}
+
+// Enhanced table functionality
+function refreshTableData() {
+    const tableLastUpdate = document.getElementById('tableLastUpdate');
+    if (tableLastUpdate) {
+        tableLastUpdate.textContent = new Date().toLocaleTimeString('pt-PT');
+    }
+    
+    // Refresh the entire dashboard data
+    atualizarDashboard();
+    
+    showNotification('Dados da tabela atualizados', 'success', 2000);
+}
+
+// Table search functionality
+function initTableSearch() {
+    const searchInput = document.getElementById('tableSearch');
+    const tableBody = document.getElementById('dataTableBody');
+    
+    if (!searchInput || !tableBody) return;
+    
+    searchInput.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const rows = tableBody.querySelectorAll('tr.data-row');
+        
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            if (text.includes(searchTerm)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+}
+
+// Table sorting functionality
+function initTableSorting() {
+    const sortHeaders = document.querySelectorAll('.sort-header');
+    
+    sortHeaders.forEach(header => {
+        header.addEventListener('click', function() {
+            const sortType = this.dataset.sort;
+            const tableBody = document.getElementById('dataTableBody');
+            const rows = Array.from(tableBody.querySelectorAll('tr.data-row'));
+            
+            // Remove sorted class from all headers
+            sortHeaders.forEach(h => h.classList.remove('sorted'));
+            this.classList.add('sorted');
+            
+            // Determine sort direction
+            const isAscending = !this.classList.contains('desc');
+            this.classList.toggle('desc');
+            
+            // Sort rows
+            rows.sort((a, b) => {
+                let aVal, bVal;
+                
+                switch(sortType) {
+                    case 'timestamp':
+                        aVal = new Date(a.children[0].textContent.trim());
+                        bVal = new Date(b.children[0].textContent.trim());
+                        break;
+                    case 'station':
+                        aVal = a.children[1].textContent.trim();
+                        bVal = b.children[1].textContent.trim();
+                        break;
+                    case 'sensor':
+                        aVal = a.children[2].textContent.trim();
+                        bVal = b.children[2].textContent.trim();
+                        break;
+                    case 'wave-height':
+                        aVal = parseFloat(a.children[3].textContent.trim());
+                        bVal = parseFloat(b.children[3].textContent.trim());
+                        break;
+                    case 'wave-period':
+                        aVal = parseFloat(a.children[4].textContent.trim());
+                        bVal = parseFloat(b.children[4].textContent.trim());
+                        break;
+                    case 'wind-speed':
+                        aVal = parseFloat(a.children[5].textContent.trim());
+                        bVal = parseFloat(b.children[5].textContent.trim());
+                        break;
+                    case 'wind-direction':
+                        aVal = parseFloat(a.children[6].textContent.trim());
+                        bVal = parseFloat(b.children[6].textContent.trim());
+                        break;
+                    case 'temperature':
+                        aVal = parseFloat(a.children[7].textContent.trim());
+                        bVal = parseFloat(b.children[7].textContent.trim());
+                        break;
+                    default:
+                        return 0;
+                }
+                
+                if (aVal < bVal) return isAscending ? -1 : 1;
+                if (aVal > bVal) return isAscending ? 1 : -1;
+                return 0;
+            });
+            
+            // Re-append sorted rows
+            rows.forEach(row => tableBody.appendChild(row));
+        });
+    });
+}
+
+// Chart error handling and retry mechanism
+function handleChartError(chartId, error) {
+    console.error(`Error in chart ${chartId}:`, error);
+    
+    const chartContainer = document.querySelector(`#${chartId}`).parentElement;
+    if (chartContainer) {
+        chartContainer.innerHTML = `
+            <div class="chart-error">
+                <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+                <h5 class="mt-3 mb-2">Erro ao carregar gráfico</h5>
+                <p class="text-muted mb-3">${error.message || 'Erro desconhecido'}</p>
+                <button class="btn btn-outline-primary btn-sm" onclick="retryChart('${chartId}')">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Tentar novamente
+                </button>
+            </div>
+        `;
+    }
+}
+
+// Retry chart initialization
+function retryChart(chartId) {
+    const chartContainer = document.querySelector(`#${chartId}`).parentElement;
+    if (chartContainer) {
+        chartContainer.innerHTML = `
+            <div class="chart-loading">
+                <div class="spinner-border text-primary me-2" role="status"></div>
+                <span>Carregando gráfico...</span>
+            </div>
+        `;
+        
+        // Re-create canvas element
+        setTimeout(() => {
+            chartContainer.innerHTML = `<canvas id="${chartId}"></canvas>`;
+            
+            // Find and reinitialize the specific chart
+            const chartConfig = window.chartConfigs?.find(cfg => cfg.id === chartId);
+            if (chartConfig) {
+                initSingleChart(chartConfig);
+            }
+        }, 1000);
+    }
+}
+
+// Initialize single chart with error handling
+function initSingleChart(config) {
+    try {
+        const ctx = document.getElementById(config.id)?.getContext('2d');
+        if (!ctx) {
+            throw new Error(`Canvas element not found: ${config.id}`);
+        }
+        
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: { 
+                labels: [], 
+                datasets: [
+                    { 
+                        label: config.label, 
+                        data: [], 
+                        borderColor: config.color, 
+                        backgroundColor: config.color + '33', 
+                        tension: 0.2,
+                        fill: false,
+                        pointRadius: 2,
+                        pointHoverRadius: 5
+                    }
+                ] 
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, position: 'top' },
+                    tooltip: { 
+                        enabled: true,
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            afterBody: function(context) {
+                                return getPatternInfoForTooltip(context[0].label, config.field);
+                            }
+                        }
+                    },
+                    title: { display: false },
+                    annotation: {
+                        annotations: {}
+                    }
+                },
+                locale: 'pt-PT',
+                scales: { 
+                    x: { 
+                        display: true,
+                        grid: {
+                            display: true,
+                            color: 'rgba(0,0,0,0.1)'
+                        }
+                    }, 
+                    y: { 
+                        display: true,
+                        grid: {
+                            display: true,
+                            color: 'rgba(0,0,0,0.1)'
+                        },
+                        beginAtZero: false
+                    } 
+                },
+                dataField: config.field,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                }
+            }
+        });
+        
+        // Add to global charts array
+        if (!window.charts) window.charts = [];
+        window.charts.push(chart);
+        
+        return chart;
+    } catch (error) {
+        handleChartError(config.id, error);
+        return null;
+    }
+}
+
+// Enhanced chart initialization with loading states
+function initChartsWithLoadingStates() {    const chartConfigs = [
+        { id: 'waveHeightChart', label: 'Altura das Ondas (m)', color: '#007bff', field: 'wave_height', dataField: 'waveHeight' },
+        { id: 'windDirectionChart', label: 'Direção do Vento (°)', color: '#17c9e6', field: 'wind_direction', dataField: 'waveDirection' },
+        { id: 'temperatureChart', label: 'Temperatura da Água (°C)', color: '#198754', field: 'temperature', dataField: 'seaTemperature' },
+        { id: 'windSpeedChart', label: 'Velocidade do Vento (nós)', color: '#ffc107', field: 'wind_speed', dataField: 'windSpeed' }
+    ];
+    
+    // Store configs globally for retry functionality
+    window.chartConfigs = chartConfigs;
+    
+    chartConfigs.forEach(config => {
+        const chartContainer = document.querySelector(`#${config.id}`)?.parentElement;
+        if (chartContainer) {
+            // Show loading state
+            chartContainer.innerHTML = `
+                <div class="chart-loading">
+                    <div class="spinner-border text-primary me-2" role="status"></div>
+                    <span>Carregando ${config.label.toLowerCase()}...</span>
+                </div>
+            `;
+            
+            // Initialize chart after brief delay
+            setTimeout(() => {
+                chartContainer.innerHTML = `<canvas id="${config.id}"></canvas>`;
+                initSingleChart(config);
+            }, 500);
+        }
+    });
+}
+
+// Enhanced error handling and connection status
+function checkServerConnection() {
+    return fetch('/Home/GetLatestData?timeRange=1h&location=all&resolution=hour', {
+        method: 'HEAD', // Just check if endpoint is reachable
+        cache: 'no-cache'
+    })
+    .then(response => response.ok)
+    .catch(() => false);
+}
+
+function showConnectionStatus(isConnected) {
+    const autoRefreshStatus = document.getElementById('autoRefreshStatus');
+    const autoRefreshToggle = document.getElementById('autoRefreshToggle');
+    
+    if (!isConnected) {
+        if (autoRefreshStatus) {
+            autoRefreshStatus.innerHTML = '<i class="bi bi-exclamation-triangle text-warning"></i> Sem conexão';
+            autoRefreshStatus.className = 'text-warning fw-medium';
+        }
+        
+        // Disable auto-refresh if connection is lost
+        if (autoRefreshToggle && autoRefreshToggle.checked) {
+            console.warn('Connection lost - disabling auto-refresh');
+            autoRefreshToggle.checked = false;
+            autoRefreshToggle.dispatchEvent(new Event('change'));
+        }
+    }
+}
+
+// Enhanced dashboard update with connection checking
+function atualizarDashboardWithConnectionCheck() {
+    checkServerConnection().then(isConnected => {
+        if (isConnected) {
+            atualizarDashboard();
+        } else {
+            showConnectionStatus(false);
+            console.error('Server connection failed - skipping refresh');
+        }
+    });
+}
+
+// Notification system for dashboard updates
+function showNotification(message, type = 'info', duration = 3000) {
+    // Remove any existing notifications
+    const existingNotification = document.querySelector('.dashboard-notification');
+    if (existingNotification) {
+        existingNotification.remove();
+    }
+    
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type} dashboard-notification position-fixed`;
+    notification.style.cssText = `
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        min-width: 300px;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
+    `;
+    notification.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="bi bi-${type === 'success' ? 'check-circle' : type === 'warning' ? 'exclamation-triangle' : type === 'danger' ? 'x-circle' : 'info-circle'} me-2"></i>
+            <span>${message}</span>
+            <button type="button" class="btn-close ms-auto" aria-label="Close"></button>
+        </div>
+    `;
+    
+    // Add to page
+    document.body.appendChild(notification);
+    
+    // Show notification
+    setTimeout(() => {
+        notification.style.opacity = '1';
+    }, 100);
+    
+    // Auto-hide after duration
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 300);
+    }, duration);
+    
+    // Manual close button
+    notification.querySelector('.btn-close').addEventListener('click', () => {
+        notification.style.opacity = '0';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 300);
+    });
 }

@@ -257,43 +257,35 @@ namespace OceanDashboard.Controllers
                 }
             }
             
-            return View(viewModel);
-        }
-        
-        private List<string> GetAvailableStations()
-        {
-            try
-            {
-                using var connection = new SqliteConnection(_connectionString);
-                connection.Open();
-                
-                var command = connection.CreateCommand();
-                command.CommandText = "SELECT DISTINCT station_id FROM ocean_data WHERE station_id IS NOT NULL";
-                
-                var stations = new List<string>();
-                using var reader = command.ExecuteReader();
-                while (reader.Read())
-                {
-                    if (!reader.IsDBNull(0))
-                    {
-                        stations.Add(reader.GetString(0));
-                    }
-                }
-                
-                return stations;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error fetching available stations");
-                return new List<string>();
-            }
-        }
-
-        [HttpGet]
+            return View(viewModel);        }        [HttpGet]
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult GetLatestData(string timeRange = "24h", string location = "all", string resolution = "hour")
         {
+            _logger.LogInformation("=== INÍCIO GetLatestData ===");
+            _logger.LogInformation("Parâmetros: timeRange={TimeRange}, location={Location}, resolution={Resolution}", 
+                timeRange, location, resolution);
+            
+            // Adicionar logs detalhados sobre detecção de formato de banco
+            _logger.LogInformation("Caminho do banco de dados: {DbPath}", _dbPath);
+            _logger.LogInformation("Verificando formato do banco de dados...");
+            
+            bool hasOceanServerFormat = _oceanServerDbHelper.HasOceanServerFormat();
+            _logger.LogInformation("HasOceanServerFormat retornou: {HasOceanServerFormat}", hasOceanServerFormat);
+            
+            if (hasOceanServerFormat)
+            {
+                _logger.LogInformation("USANDO FORMATO OCEANSERVER - tabela dados_wavy");
+            }
+            else
+            {
+                _logger.LogInformation("USANDO FORMATO PADRÃO - tabela ocean_data");
+            }
+            
             var oceanData = GetLatestOceanData(timeRange, location, resolution);
+            
+            _logger.LogInformation("GetLatestOceanData retornou {Count} registros", oceanData?.Count ?? 0);
+            _logger.LogInformation("=== FIM GetLatestData ===");
+            
             return Json(oceanData);
         }
 
@@ -397,15 +389,13 @@ namespace OceanDashboard.Controllers
 
             // Calcular médias para cada grupo
             foreach (var group in groupedData.OrderByDescending(g => g.Key))
-            {
-                var groupData = group.Value;
+            {                var groupData = group.Value;
                 if (groupData.Any())
-                {                    // Criar um novo OceanData com valores agregados
+                {
+                    // Criar um novo OceanData com valores agregados
                     var aggregatedData = new OceanData
                     {
                         Timestamp = group.Key.Item1,
-                        StationId = group.Key.Item2,
-                        SensorId = groupData.FirstOrDefault()?.SensorId ?? group.Key.Item2,
                         Id = groupData[0].Id, // Usar o ID do primeiro registro
                         
                         // Usar médias para os valores numéricos
@@ -453,15 +443,14 @@ namespace OceanDashboard.Controllers
 
             _logger.LogInformation($"Resolução '{resolution}': {processedData.Count} pontos devolvidos após agrupamento.");
             return processedData;
-        }
-
-        // Helper method to get data from database with specific date range and location
+        }        // Helper method to get data from database with specific date range and location
         private List<OceanData> GetDataFromDatabase(DateTime startDate, DateTime endDate, string location)
         {
             var data = new List<OceanData>();
             
             try 
             {
+                _logger.LogInformation("=== INÍCIO GetDataFromDatabase ===");
                 _logger.LogInformation("Obtendo dados do período {StartDate} até {EndDate}, local: {Location}", 
                     startDate.ToString("o"), endDate.ToString("o"), location);
                 
@@ -472,10 +461,16 @@ namespace OceanDashboard.Controllers
                 }
                 
                 // First check if we're using OceanServer format
-                if (_oceanServerDbHelper.HasOceanServerFormat())
+                bool usingOceanServerFormat = _oceanServerDbHelper.HasOceanServerFormat();
+                _logger.LogInformation("Verificação de formato OceanServer: {UsingOceanServerFormat}", usingOceanServerFormat);
+                
+                if (usingOceanServerFormat)
                 {
-                    _logger.LogInformation("Usando formato OceanServer (dados_wavy)");
-                    return _oceanServerDbHelper.GetDataFromOceanServer(startDate, endDate, location);
+                    _logger.LogInformation("EXECUTANDO: GetDataFromOceanServer (tabela dados_wavy)");
+                    var oceanServerData = _oceanServerDbHelper.GetDataFromOceanServer(startDate, endDate, location);
+                    _logger.LogInformation("GetDataFromOceanServer retornou {Count} registros", oceanServerData?.Count ?? 0);
+                    _logger.LogInformation("=== FIM GetDataFromDatabase (OceanServer) ===");
+                    return oceanServerData ?? new List<OceanData>();
                 }
                 
                 // If not OceanServer format, use the ocean_data table
@@ -554,8 +549,7 @@ namespace OceanDashboard.Controllers
                         while (reader.Read())
                         {
                             try 
-                            {
-                                if (isLegacySchema)
+                            {                                if (isLegacySchema)
                                 {
                                     // Lendo no formato antigo
                                     data.Add(new OceanData
@@ -565,8 +559,7 @@ namespace OceanDashboard.Controllers
                                         WaveHeight = reader.GetDouble(2),
                                         WavePeriod = reader.GetDouble(3),
                                         WaveDirection = reader.GetDouble(4),
-                                        SeaTemperature = reader.GetDouble(5),
-                                        Location = reader.GetString(6)
+                                        SeaTemperature = reader.GetDouble(5)
                                     });
                                 }
                                 else
@@ -727,10 +720,11 @@ namespace OceanDashboard.Controllers
                             command.Parameters.AddWithValue("$wave_direction", waveDirection);
                             command.Parameters.AddWithValue("$hmax", maxWaveHeight);
                             command.Parameters.AddWithValue("$air_temp", airTemperature);
-                            command.Parameters.AddWithValue("$dew_point", dewPoint);
-                            command.Parameters.AddWithValue("$sea_temp", seaTemperature);                            command.Parameters.AddWithValue("$humidity", humidity);
+                            command.Parameters.AddWithValue("$dew_point", dewPoint);                            command.Parameters.AddWithValue("$sea_temp", seaTemperature);
+                            command.Parameters.AddWithValue("$humidity", humidity);
                             command.Parameters.AddWithValue("$qc_flag", qcFlag);
                             command.Parameters.AddWithValue("$station_id", stationId);
+                            command.Parameters.AddWithValue("$location", location);
 
                             command.ExecuteNonQuery();
                         }
@@ -754,134 +748,75 @@ namespace OceanDashboard.Controllers
         public IActionResult Privacy()
         {
             return View();
-        }
-
-        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+        }        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult Error()
         {
             return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
         }
 
-        public async Task<IActionResult> Analytics(string timeRange = "24h", string stationId = "all", 
-    string analysisType = "all", DateTime? startDate = null, DateTime? endDate = null)
-{
-    var viewModel = new AnalyticsViewModel
-    {
-        TimeRange = timeRange,
-        StationId = stationId,
-        AnalysisType = analysisType
-    };
-    
-    try
-    {
-        // Set start and end dates based on time range
-        if (timeRange == "custom" && startDate.HasValue && endDate.HasValue)
+        private List<string> GetAvailableStations()
         {
-            viewModel.StartDate = startDate.Value;
-            viewModel.EndDate = endDate.Value;
-        }
-        else
-        {
-            // Calculate dates based on time range
-            viewModel.EndDate = DateTime.Now;
-            switch (timeRange)
+            var stations = new List<string>();
+            
+            try
             {
-                case "1h": viewModel.StartDate = viewModel.EndDate.AddHours(-1); break;
-                case "6h": viewModel.StartDate = viewModel.EndDate.AddHours(-6); break;
-                case "12h": viewModel.StartDate = viewModel.EndDate.AddHours(-12); break;
-                case "48h": viewModel.StartDate = viewModel.EndDate.AddDays(-2); break;
-                case "7d": viewModel.StartDate = viewModel.EndDate.AddDays(-7); break;
-                case "30d": viewModel.StartDate = viewModel.EndDate.AddDays(-30); break;
-                default: viewModel.StartDate = viewModel.EndDate.AddDays(-1); break; // Default to 24h
-            }
-        }
-          // Get ocean data from database
-        viewModel.OceanData = GetOceanDataFromDb(viewModel.StartDate, viewModel.EndDate, stationId);
-        
-        // Get available stations for dropdown
-        viewModel.AvailableStations = GetAvailableStations();
-        
-        // If we have data, perform analysis using RPC service        if (viewModel.OceanData.Count > 0)
-        {
-            var client = HttpContext.RequestServices.GetRequiredService<Services.DataAnalysisServiceClient>();
-            viewModel.AnalysisResult = await client.AnalyzeDataAsync(
-                viewModel.OceanData, 
-                analysisType,
-                timeRange,
-                stationId
-            );
-        }
-        else
-        {
-            viewModel.AnalysisResult = new DataAnalysisResult
-            {
-                Success = false,
-                ErrorMessage = "Não foram encontrados dados para o período e localização selecionados"
-            };
-        }
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Erro ao carregar dados para a análise");
-        viewModel.AnalysisResult = new DataAnalysisResult
-        {
-            Success = false,
-            ErrorMessage = $"Ocorreu um erro ao analisar os dados: {ex.Message}"
-        };
-    }
-    
-    return View(viewModel);
-}
-
-private List<string> GetAvailableStations()
-{
-    var stations = new List<string>();
-    
-    try
-    {
-        if (_oceanServerDbHelper.HasOceanServerFormat())
-        {
-            // If we have OceanServer format, get unique wavy_id values
-            using (var connection = new SqliteConnection(_connectionString))
-            {
-                connection.Open();
-                var command = connection.CreateCommand();
-                command.CommandText = "SELECT DISTINCT wavy_id FROM dados_wavy ORDER BY wavy_id";
-                
-                using (var reader = command.ExecuteReader())
+                if (_oceanServerDbHelper.HasOceanServerFormat())
                 {
-                    while (reader.Read())
+                    // If we have OceanServer format, get unique wavy_id values
+                    using (var connection = new SqliteConnection(_connectionString))
                     {
-                        if (!reader.IsDBNull(0))
+                        connection.Open();
+                        var command = connection.CreateCommand();
+                        command.CommandText = "SELECT DISTINCT wavy_id FROM dados_wavy ORDER BY wavy_id";
+                        
+                        using (var reader = command.ExecuteReader())
                         {
-                            string wavyId = reader.GetString(0);
-                            if (!string.IsNullOrWhiteSpace(wavyId))
+                            while (reader.Read())
                             {
-                                stations.Add(wavyId);
+                                if (!reader.IsDBNull(0))
+                                {
+                                    string wavyId = reader.GetString(0);
+                                    if (!string.IsNullOrWhiteSpace(wavyId))
+                                    {
+                                        stations.Add(wavyId);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // For regular ocean_data format, get unique station_id values
+                    using (var connection = new SqliteConnection(_connectionString))
+                    {
+                        connection.Open();
+                        var command = connection.CreateCommand();
+                        command.CommandText = "SELECT DISTINCT station_id FROM ocean_data WHERE station_id IS NOT NULL AND station_id != '' ORDER BY station_id";
+                        
+                        using (var reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                if (!reader.IsDBNull(0))
+                                {
+                                    string stationId = reader.GetString(0);
+                                    if (!string.IsNullOrWhiteSpace(stationId))
+                                    {
+                                        stations.Add(stationId);
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro ao obter estações disponíveis");
+            }
+            
+            return stations;
         }
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Erro ao obter estações disponíveis");
-    }
-    
-    return stations;
-}
-
-private List<OceanData> GetOceanDataFromDb(DateTime startDate, DateTime endDate, string stationId)
-{
-    if (_oceanServerDbHelper.HasOceanServerFormat())
-    {
-        return _oceanServerDbHelper.GetDataFromOceanServer(startDate, endDate, stationId);
-    }
-    
-    // Fallback to empty list if no data is available
-    return new List<OceanData>();
-}
     }
 }

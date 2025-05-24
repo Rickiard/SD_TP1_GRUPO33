@@ -91,9 +91,9 @@ namespace RPC_DataAnalyserService.Services
                     Success = false,
                     ErrorMessage = $"Erro ao processar dados: {ex.Message}"
                 };
-            }
-        }
-          private Task CalculateBasicStatistics(List<SensorData> dataPoints, AnalysisResponse response)
+            }        }
+
+        private Task CalculateBasicStatistics(List<SensorData> dataPoints, AnalysisResponse response)
         {
             // Log estatísticas básicas
             _logger.LogInformation("Calculando estatísticas básicas para {Count} pontos de dados", dataPoints.Count);
@@ -191,9 +191,9 @@ namespace RPC_DataAnalyserService.Services
             if (count % 2 == 0)
                 return (sortedValues[count / 2 - 1] + sortedValues[count / 2]) / 2;
             
-            return sortedValues[count / 2];
-        }
-          private async Task CalculateWaveStatistics(List<SensorData> data, AnalysisResponse response)
+            return sortedValues[count / 2];        }
+
+        private async Task CalculateWaveStatistics(List<SensorData> data, AnalysisResponse response)
         {
             try
             {
@@ -284,9 +284,11 @@ namespace RPC_DataAnalyserService.Services
                             stationWaveStats.MaxPeriod = validStationWavePeriodData.Max(d => d.WavePeriodS);
                             stationWaveStats.MinPeriod = validStationWavePeriodData.Min(d => d.WavePeriodS);
                             stationWaveStats.MedianPeriod = CalculateMedian(validStationWavePeriodData.Select(d => d.WavePeriodS));
-                        }
-                        
-                        // Calcular direção média                            stationWaveStats.AvgDirection = CalculateCircularMean(validStationDirectionData.Select(d => d.MeanWaveDirectionDegrees));
+                        }                          // Calcular direção média
+                        var validStationDirectionData = stationData.Where(d => !double.IsNaN(d.MeanWaveDirectionDegrees)).ToList();
+                        if (validStationDirectionData.Any())
+                        {
+                            stationWaveStats.AvgDirection = CalculateCircularMean(validStationDirectionData.Select(d => d.MeanWaveDirectionDegrees));
                             stationWaveStats.PredominantDirection = GetPredominantDirection(validStationDirectionData.Select(d => d.MeanWaveDirectionDegrees).ToList());
                         }
                         
@@ -303,15 +305,15 @@ namespace RPC_DataAnalyserService.Services
                         response.Statistics.Add($"max_wave_height_{stationId}", stationWaveStats.MaxHeight);
                     }
                 }
-                
-                _logger.LogInformation("Estatísticas de ondas calculadas para {Count} estações", response.WaveStats.Count - 1);
+                  _logger.LogInformation("Estatísticas de ondas calculadas para {Count} estações", response.WaveStats.Count - 1);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erro ao calcular estatísticas de ondas");
             }
         }
-          private async Task CalculateWindStatistics(List<SensorData> data, AnalysisResponse response)
+
+        private async Task CalculateWindStatistics(List<SensorData> data, AnalysisResponse response)
         {
             try
             {
@@ -362,12 +364,12 @@ namespace RPC_DataAnalyserService.Services
                             overallStats.GustFactor = overallStats.MaxGust / overallStats.AvgSpeed;
                         }
                     }
-                    
-                    // Calcular distribuição de Beaufort
+                      // Calcular distribuição de Beaufort
                     var beaufortDistribution = CalculateBeaufortDistribution(validWindSpeedData.Select(d => d.WindSpeedKn));
-                    overallStats.BeaufortDistribution = beaufortDistribution
-                        .Select(kv => new KeyValuePair<string, double>(kv.Key.ToString(), kv.Value))
-                        .ToDictionary(kv => kv.Key, kv => kv.Value);
+                    foreach (var kv in beaufortDistribution)
+                    {
+                        overallStats.BeaufortDistribution.Add(kv.Key.ToString(), kv.Value);
+                    }
                     
                     // Atribuir estatísticas gerais
                     response.WindStats["overall"] = overallStats;
@@ -428,12 +430,12 @@ namespace RPC_DataAnalyserService.Services
                                 stationWindStats.GustFactor = stationWindStats.MaxGust / stationWindStats.AvgSpeed;
                             }
                         }
-                        
-                        // Calcular distribuição de Beaufort
+                          // Calcular distribuição de Beaufort
                         var beaufortDistribution = CalculateBeaufortDistribution(stationWindSpeedData.Select(d => d.WindSpeedKn));
-                        stationWindStats.BeaufortDistribution = beaufortDistribution
-                            .Select(kv => new KeyValuePair<string, double>(kv.Key.ToString(), kv.Value))
-                            .ToDictionary(kv => kv.Key, kv => kv.Value);
+                        foreach (var kv in beaufortDistribution)
+                        {
+                            stationWindStats.BeaufortDistribution.Add(kv.Key.ToString(), kv.Value);
+                        }
                         
                         // Adicionar ao dicionário de estatísticas
                         response.WindStats[stationId] = stationWindStats;
@@ -489,9 +491,9 @@ namespace RPC_DataAnalyserService.Services
                 result[i] = percentage;
             }
             
-            return result;
-        }
-          private async Task CalculateTemperatureStatistics(List<SensorData> data, AnalysisResponse response)
+            return result;        }
+
+        private async Task CalculateTemperatureStatistics(List<SensorData> data, AnalysisResponse response)
         {
             try
             {
