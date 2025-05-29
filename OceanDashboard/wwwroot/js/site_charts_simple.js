@@ -55,6 +55,14 @@ document.addEventListener('DOMContentLoaded', function() {
     if (refreshBtn) {
         refreshBtn.addEventListener('click', loadAndDisplayData);
     }
+      // Set up filter change listeners
+    setupFilterListeners();
+    
+    // Set up apply filters button
+    const applyFiltersBtn = document.getElementById('applyFilters');
+    if (applyFiltersBtn) {
+        applyFiltersBtn.addEventListener('click', loadAndDisplayData);
+    }
     
     // Initialize Bootstrap tooltips
     const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
@@ -75,6 +83,34 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// Set up event listeners for all filter controls
+function setupFilterListeners() {
+    // Array de IDs dos filtros
+    const filterIds = ['timeRange', 'stationId', 'resolution', 'analysisType'];
+    
+    // Adicionar event listener para cada filtro
+    filterIds.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', () => {
+                // Carregar dados quando qualquer filtro mudar
+                loadAndDisplayData();
+            });
+        }
+    });
+    
+    // Sobrescrever o comportamento padrão do formulário
+    const filterForm = document.getElementById('dashboardFilters');
+    if (filterForm) {
+        filterForm.addEventListener('submit', (event) => {
+            event.preventDefault(); // Impedir a submissão do formulário
+            loadAndDisplayData();   // Carregar dados via AJAX em vez de recarregar a página
+        });
+    }
+    
+    console.log('Filter listeners set up successfully');
+}
 
 // Create all charts at once
 function createAllCharts() {
@@ -185,9 +221,33 @@ function createChart(chartId) {
 
 // Load data and update all charts
 function loadAndDisplayData() {
+    console.log('Loading dashboard data with filters...');
+    
+    // Obter valores de todos os filtros
     const timeRange = document.getElementById('timeRange')?.value || '24h';
-    const location = document.getElementById('location')?.value || 'all';
-    const url = `/Home/GetLatestData?timeRange=${timeRange}&location=${encodeURIComponent(location)}`;
+    const stationId = document.getElementById('stationId')?.value || 'all';
+    const resolution = document.getElementById('resolution')?.value || 'raw';
+    const analysisType = document.getElementById('analysisType')?.value || 'none';
+    
+    console.log(`Filters: timeRange=${timeRange}, stationId=${stationId}, resolution=${resolution}, analysisType=${analysisType}`);
+    
+    // Construir URL com todos os parâmetros dos filtros
+    const url = `/Home/GetLatestData?timeRange=${encodeURIComponent(timeRange)}&location=${encodeURIComponent(stationId)}&resolution=${encodeURIComponent(resolution)}&analysisType=${encodeURIComponent(analysisType)}`;
+    
+    // Mostrar indicador de carregamento
+    document.querySelectorAll('.dashboard-chart').forEach(chart => {
+        chart.classList.add('loading');
+    });
+    
+    // Atualizar badge de status com os filtros selecionados
+    updateFilterStatus(timeRange, stationId, resolution, analysisType);
+    
+    // Atualizar o timestamp de última atualização para "Atualizando..."
+    const lastUpdateElement = document.getElementById('lastUpdateTime');
+    if (lastUpdateElement) {
+        lastUpdateElement.textContent = "Atualizando...";
+        lastUpdateElement.classList.add('text-primary');
+    }
     
     fetch(url)
         .then(response => {
@@ -197,14 +257,35 @@ function loadAndDisplayData() {
             return response.json();
         })
         .then(data => {
+            console.log(`Received ${data?.length || 0} records from API`);
+            
             if (data && data.length > 0) {
                 updateAllCharts(data);
                 updateDataTable(data);
                 updateLastRefreshTime();
+                
+                // Atualizar resumo dos dados recebidos
+                updateDataSummary(data);
+            } else {
+                console.warn('No data returned from API');
+                // Mostrar mensagem de sem dados nos gráficos
+                showNoDataMessage();
             }
         })
         .catch(error => {
             console.error('Error loading data:', error);
+            showErrorMessage(error);
+        })
+        .finally(() => {
+            // Remover indicador de carregamento
+            document.querySelectorAll('.dashboard-chart').forEach(chart => {
+                chart.classList.remove('loading');
+            });
+            
+            // Restaurar a classe do timestamp
+            if (lastUpdateElement) {
+                lastUpdateElement.classList.remove('text-primary');
+            }
         });
 }
 
@@ -308,6 +389,155 @@ function updateLastRefreshTime() {
     if (element) {
         element.textContent = new Date().toLocaleTimeString('pt-PT');
     }
+}
+
+// Atualiza o status dos filtros em uso
+function updateFilterStatus(timeRange, stationId, resolution, analysisType) {
+    const statusElement = document.querySelector('.filter-status');
+    if (!statusElement) return;
+    
+    // Mapear valores para nomes mais amigáveis
+    const timeRangeMap = {
+        '1h': 'Última hora', 
+        '6h': 'Últimas 6 horas',
+        '24h': 'Últimas 24 horas',
+        '7d': 'Últimos 7 dias',
+        '30d': 'Últimos 30 dias'
+    };
+    
+    const resolutionMap = {
+        'raw': 'Brutos',
+        'minute': 'Minuto',
+        'hour': 'Hora',
+        'day': 'Dia'
+    };
+    
+    const analysisMap = {
+        'none': 'Sem análise',
+        'all': 'Análise completa',
+        'wave': 'Análise de ondas',
+        'wind': 'Análise de ventos',
+        'temperature': 'Análise de temperatura'
+    };
+    
+    // Criar strings para os filtros ativos
+    const timeFilter = timeRangeMap[timeRange] || timeRange;
+    const stationFilter = stationId !== 'all' ? `Estação: ${stationId}` : 'Todas estações';
+    const resolutionFilter = resolutionMap[resolution] || resolution;
+    const analysisFilter = analysisMap[analysisType] || 'Sem análise';
+    
+    // Atualizar o badge
+    statusElement.innerHTML = `
+        <span class="badge bg-light text-dark me-1">
+            <i class="bi bi-clock-history me-1"></i>${timeFilter}
+        </span>
+        <span class="badge bg-light text-dark me-1">
+            <i class="bi bi-geo-alt me-1"></i>${stationFilter}
+        </span>
+        <span class="badge bg-light text-dark me-1">
+            <i class="bi bi-bar-chart me-1"></i>${resolutionFilter}
+        </span>
+        ${analysisType !== 'none' ? `
+        <span class="badge bg-info text-white">
+            <i class="bi bi-cpu me-1"></i>${analysisFilter}
+        </span>
+        ` : ''}
+    `;
+}
+
+// Mostra mensagem quando não há dados
+function showNoDataMessage() {
+    Object.keys(chartConfigs).forEach(chartId => {
+        const container = document.getElementById(chartId);
+        if (container) {
+            Plotly.purge(chartId);
+            container.innerHTML = `
+                <div class="no-data-message text-center p-5">
+                    <i class="bi bi-exclamation-circle text-muted fs-1"></i>
+                    <p class="mt-3 text-muted">Nenhum dado disponível para os filtros selecionados</p>
+                </div>
+            `;
+        }
+    });
+    
+    // Atualizar tabela também
+    const tableBody = document.querySelector('table tbody');
+    if (tableBody) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center p-4">
+                    <i class="bi bi-exclamation-circle text-muted fs-4 mb-2 d-block"></i>
+                    Nenhum dado disponível para os filtros selecionados
+                </td>
+            </tr>
+        `;
+    }
+}
+
+// Mostra mensagem de erro
+function showErrorMessage(error) {
+    console.error('Error fetching data:', error);
+    
+    Object.keys(chartConfigs).forEach(chartId => {
+        const container = document.getElementById(chartId);
+        if (container) {
+            Plotly.purge(chartId);
+            container.innerHTML = `
+                <div class="error-message text-center p-5">
+                    <i class="bi bi-exclamation-triangle text-danger fs-1"></i>
+                    <p class="mt-3 text-danger">Erro ao carregar dados: ${error.message}</p>
+                </div>
+            `;
+        }
+    });
+}
+
+// Atualiza o resumo dos dados
+function updateDataSummary(data) {
+    if (!data || data.length === 0) return;
+    
+    // Calcular estatísticas simples
+    const waveHeights = data.map(d => d.waveHeight).filter(v => v !== null && v !== undefined && !isNaN(v));
+    const seaTemps = data.map(d => d.seaTemperature).filter(v => v !== null && v !== undefined && !isNaN(v));
+    const windSpeeds = data.map(d => d.windSpeed).filter(v => v !== null && v !== undefined && !isNaN(v));
+    const windDirs = data.map(d => d.windDirection).filter(v => v !== null && v !== undefined && !isNaN(v));
+    
+    // Contar estações únicas
+    const stations = new Set(data.map(d => d.stationId));
+    
+    // Função para calcular média
+    const average = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    
+    // Função para encontrar máximo
+    const max = arr => arr.length ? Math.max(...arr) : 0;
+    
+    // Função para encontrar mínimo
+    const min = arr => arr.length ? Math.min(...arr) : 0;
+    
+    // Atualizar os cards de resumo com os novos valores
+    updateSummaryCard('avg-wave-height', average(waveHeights).toFixed(1));
+    updateSummaryCard('max-wave-height', max(waveHeights).toFixed(1));
+    updateSummaryCard('avg-sea-temp', average(seaTemps).toFixed(1));
+    updateSummaryCard('min-sea-temp', min(seaTemps).toFixed(1));
+    updateSummaryCard('max-sea-temp', max(seaTemps).toFixed(1));
+    updateSummaryCard('avg-wind-speed', average(windSpeeds).toFixed(1));
+    updateSummaryCard('max-wind-speed', max(windSpeeds).toFixed(1));
+    
+    // Atualizar contadores
+    updateCounter('data-points-count', data.length);
+    updateCounter('stations-count', stations.size);
+}
+
+// Atualiza um card de resumo
+function updateSummaryCard(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+}
+
+// Atualiza um contador
+function updateCounter(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
 }
 
 // Global functions for external access

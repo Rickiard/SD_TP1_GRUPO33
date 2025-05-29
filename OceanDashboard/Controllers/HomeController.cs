@@ -285,11 +285,15 @@ namespace OceanDashboard.Controllers
 
         [HttpGet]
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-        public IActionResult GetLatestData(string timeRange = "24h", string location = "all", string resolution = "hour")
+        public IActionResult GetLatestData(string timeRange = "24h", string location = "all", string resolution = "raw", string analysisType = "none")
         {
             _logger.LogInformation("=== INÍCIO GetLatestData ===");
-            _logger.LogInformation("Parâmetros: timeRange={TimeRange}, location={Location}, resolution={Resolution}", 
-                timeRange, location, resolution);
+            _logger.LogInformation("Parâmetros: timeRange={TimeRange}, location={Location}, resolution={Resolution}, analysisType={AnalysisType}", 
+                timeRange, location, resolution, analysisType);
+            
+            // Validar parâmetros recebidos
+            timeRange = ValidateTimeRange(timeRange);
+            resolution = ValidateResolution(resolution);
             
             // Adicionar logs detalhados sobre detecção de formato de banco
             _logger.LogInformation("Caminho do banco de dados: {DbPath}", _dbPath);
@@ -307,12 +311,48 @@ namespace OceanDashboard.Controllers
                 _logger.LogInformation("USANDO FORMATO PADRÃO - tabela ocean_data");
             }
             
+            // Obter dados filtrados
             var oceanData = GetLatestOceanData(timeRange, location, resolution);
+            
+            // Aplicar análises adicionais se necessário
+            if (analysisType != "none" && oceanData.Count > 0)
+            {
+                try
+                {
+                    _logger.LogInformation("Aplicando análise: {AnalysisType}", analysisType);
+                    ApplyDataAnalysis(oceanData, analysisType);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Erro ao aplicar análise de dados");
+                }
+            }
             
             _logger.LogInformation("GetLatestOceanData retornou {Count} registros", oceanData?.Count ?? 0);
             _logger.LogInformation("=== FIM GetLatestData ===");
             
             return Json(oceanData);
+        }
+        
+        // Métodos auxiliares para validação de parâmetros
+        private string ValidateTimeRange(string timeRange)
+        {
+            var validRanges = new[] { "1h", "6h", "24h", "7d", "30d" };
+            return validRanges.Contains(timeRange) ? timeRange : "24h";
+        }
+        
+        private string ValidateResolution(string resolution)
+        {
+            var validResolutions = new[] { "raw", "minute", "hour", "day" };
+            return validResolutions.Contains(resolution) ? resolution : "raw";
+        }
+        
+        // Método para aplicar análises aos dados
+        private void ApplyDataAnalysis(List<OceanData> data, string analysisType)
+        {
+            // Aqui poderia ser implementada lógica para aplicar análises específicas
+            // Por enquanto, apenas logamos que a análise seria aplicada
+            _logger.LogInformation("Análise de dados tipo {AnalysisType} aplicada a {Count} registros", analysisType, data.Count);
         }
 
         public List<OceanData> GetLatestOceanData(string timeRange = "24h", string location = "all", string resolution = "hour")

@@ -99,12 +99,11 @@
                                             <option value="temperature">Temperatura</option>
                                         </select>
                                     </div>
-                                </div>
-                                <div class="col-lg-2 col-md-12">
+                                </div>                                <div class="col-lg-2 col-md-12">
                                     <div class="form-group">
                                         <div class="d-grid gap-2">
-                                            <button type="submit" class="btn btn-primary btn-modern">
-                                                <i class="bi bi-search me-2"></i>Aplicar
+                                            <button type="button" id="applyFilters" class="btn btn-primary btn-modern">
+                                                <i class="bi bi-search me-2"></i>Aplicar Filtros
                                             </button>
                                         </div>
                                     </div>
@@ -136,17 +135,16 @@
         <div class="col-md-3">
             <div class="card bg-white text-dark h-100 shadow-sm border-left-primary">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
+                    <div class="d-flex justify-content-between align-items-start">                        <div>
                             <h6 class="card-subtitle mb-2 text-muted">Altura das Ondas</h6>
-                            <h2 class="card-title mb-0 text-primary">@Model.Summary.AverageWaveHeight.ToString("F1") m</h2>
+                            <h2 class="card-title mb-0 text-primary"><span id="avg-wave-height">@Model.Summary.AverageWaveHeight.ToString("F1")</span> m</h2>
                         </div>
                         <div class="fs-1 text-primary opacity-25">
                             <i class="bi bi-water"></i>
                         </div>
                     </div>
                     <div class="mt-3 d-flex justify-content-between">
-                        <small>Máx: <span class="text-primary fw-bold">@Model.Summary.MaxWaveHeight.ToString("F1") m</span></small>
+                        <small>Máx: <span class="text-primary fw-bold"><span id="max-wave-height">@Model.Summary.MaxWaveHeight.ToString("F1")</span> m</span></small>
                         <small>Mediana: <span class="text-primary">@Model.Summary.MedianWaveHeight.ToString("F1") m</span></small>
                     </div>
                 </div>
@@ -156,18 +154,17 @@
         <div class="col-md-3">
             <div class="card bg-white text-dark h-100 shadow-sm border-left-success">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
+                    <div class="d-flex justify-content-between align-items-start">                        <div>
                             <h6 class="card-subtitle mb-2 text-muted">Temperatura do Mar</h6>
-                            <h2 class="card-title mb-0 text-success">@Model.Summary.AverageSeaTemperature.ToString("F1") °C</h2>
+                            <h2 class="card-title mb-0 text-success"><span id="avg-sea-temp">@Model.Summary.AverageSeaTemperature.ToString("F1")</span> °C</h2>
                         </div>
                         <div class="fs-1 text-success opacity-25">
                             <i class="bi bi-thermometer-half"></i>
                         </div>
                     </div>
                     <div class="mt-3 d-flex justify-content-between">
-                        <small>Min: <span class="text-success">@Model.Summary.MinSeaTemperature.ToString("F1") °C</span></small>
-                        <small>Max: <span class="text-success fw-bold">@Model.Summary.MaxSeaTemperature.ToString("F1") °C</span></small>
+                        <small>Min: <span class="text-success"><span id="min-sea-temp">@Model.Summary.MinSeaTemperature.ToString("F1")</span> °C</span></small>
+                        <small>Max: <span class="text-success fw-bold"><span id="max-sea-temp">@Model.Summary.MaxSeaTemperature.ToString("F1")</span> °C</span></small>
                     </div>
                 </div>
             </div>
@@ -176,17 +173,16 @@
         <div class="col-md-3">
             <div class="card bg-white text-dark h-100 shadow-sm border-left-warning">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
+                    <div class="d-flex justify-content-between align-items-start">                        <div>
                             <h6 class="card-subtitle mb-2 text-muted">Velocidade do Vento</h6>
-                            <h2 class="card-title mb-0 text-warning">@Model.Summary.AverageWindSpeed.ToString("F1") nós</h2>
+                            <h2 class="card-title mb-0 text-warning"><span id="avg-wind-speed">@Model.Summary.AverageWindSpeed.ToString("F1")</span> nós</h2>
                         </div>
                         <div class="fs-1 text-warning opacity-25">
                             <i class="bi bi-wind"></i>
                         </div>
                     </div>
                     <div class="mt-3 d-flex justify-content-between">
-                        <small>Máx: <span class="text-warning fw-bold">@Model.Summary.MaxWindSpeed.ToString("F1") nós</span></small>
+                        <small>Máx: <span class="text-warning fw-bold"><span id="max-wind-speed">@Model.Summary.MaxWindSpeed.ToString("F1")</span> nós</span></small>
                         <small>StdDev: <span class="text-warning">@Model.Summary.WindSpeedStdDev.ToString("F2")</span></small>
                     </div>
                 </div>
@@ -204,9 +200,8 @@
                         <div class="fs-1 text-info opacity-25">
                             <i class="bi bi-compass"></i>
                         </div>
-                    </div>
-                    <div class="mt-3">
-                        <small>Dados: <span class="text-info">@Model.Summary.DataPointsCount pontos</span> de <span class="text-info">@Model.Summary.StationsCount estações</span></small>
+                    </div>                    <div class="mt-3">
+                        <small>Dados: <span class="text-info"><span id="data-points-count">@Model.Summary.DataPointsCount</span> pontos</span> de <span class="text-info"><span id="stations-count">@Model.Summary.StationsCount</span> estações</span></small>
                     </div>
                 </div>
             </div>
