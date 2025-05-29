@@ -258,6 +258,32 @@ namespace OceanDashboard.Controllers
             }
             
             return View(viewModel);        }        [HttpGet]
+        public IActionResult TestData()
+        {
+            var testData = new List<object>
+            {
+                new {
+                    id = 1,
+                    timestamp = DateTime.Now.AddHours(-1).ToString("o"),
+                    waveHeight = 2.5,
+                    waveDirection = 180.0,
+                    seaTemperature = 18.5,
+                    windSpeed = 15.2
+                },
+                new {
+                    id = 2,
+                    timestamp = DateTime.Now.AddHours(-2).ToString("o"),
+                    waveHeight = 2.8,
+                    waveDirection = 185.0,
+                    seaTemperature = 18.3,
+                    windSpeed = 14.8
+                }
+            };
+            
+            return Json(testData);
+        }
+
+        [HttpGet]
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult GetLatestData(string timeRange = "24h", string location = "all", string resolution = "hour")
         {

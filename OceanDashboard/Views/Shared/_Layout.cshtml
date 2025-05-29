@@ -88,13 +88,11 @@
         <div class="container">
             &copy; 2025 - Ocean Dashboard - Sistema de Monitoramento Oceânico
         </div>
-    </footer>
-      <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    </footer>    <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://kit.fontawesome.com/your-code.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
-    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="~/js/site_charts_simple.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

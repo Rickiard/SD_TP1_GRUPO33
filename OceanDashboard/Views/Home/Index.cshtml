@@ -30,7 +30,7 @@
                 <div class="card filters-card shadow-lg border-0">
                     <div class="card-header bg-gradient-primary text-white">
                         <div class="d-flex justify-content-between align-items-center">
-                            <h5 class="card-title mb-0">
+                            <h5 class="card-title mb-0" style="color:black">
                                 <i class="bi bi-funnel me-2"></i>
                                 Filtros de Dados
                             </h5>
@@ -113,15 +113,11 @@
                             
                             <!-- Action Buttons Row -->
                             <div class="row mt-4">
-                                <div class="col-12">
-                                    <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                                <div class="col-12">                                    <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
                                         <div class="action-buttons">
                                             <button type="button" id="refreshData" class="btn btn-success btn-modern">
                                                 <i class="bi bi-arrow-clockwise me-2"></i>Atualizar
                                             </button>
-                                            <a href="#" id="exportDataBtn" class="btn btn-outline-secondary btn-modern">
-                                                <i class="bi bi-download me-2"></i>Exportar
-                                            </a>
                                         </div>
                                         <div class="last-update-info">
                                             <small class="text-muted d-flex align-items-center">
@@ -138,7 +134,7 @@
         </div><!-- Summary Cards -->
     <div class="row g-4 mb-4">
         <div class="col-md-3">
-            <div class="card bg-primary text-white h-100 shadow-sm">
+            <div class="card bg-light text-dark h-100 shadow-sm">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
@@ -158,7 +154,7 @@
         </div>
         
         <div class="col-md-3">
-            <div class="card bg-success text-white h-100 shadow-sm">
+            <div class="card bg-light text-dark h-100 shadow-sm">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
@@ -198,7 +194,7 @@
         </div>
         
         <div class="col-md-3">
-            <div class="card bg-info text-white h-100 shadow-sm">
+            <div class="card bg-light text-dark h-100 shadow-sm">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
@@ -237,24 +233,22 @@
             <div class="row g-4 mb-4">
                 <div class="col-md-6">
                     <div class="card h-100 shadow-sm">
-                        <div class="card-header bg-primary text-white">
+                        <div class="card-header bg-light text-dark">
                             <h5 class="card-title mb-0">Altura das Ondas</h5>
-                        </div>
-                        <div class="card-body">
+                        </div>                        <div class="card-body">
                             <div class="chart-container dashboard-chart">
-                                <canvas id="waveHeightChart"></canvas>
+                                <div id="waveHeightChart"></div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <div class="card h-100 shadow-sm">
-                        <div class="card-header bg-info text-white">
+                        <div class="card-header bg-light text-dark">
                             <h5 class="card-title mb-0">Direção do Vento</h5>
-                        </div>
-                        <div class="card-body">
+                        </div>                        <div class="card-body">
                             <div class="chart-container dashboard-chart">
-                                <canvas id="windDirectionChart"></canvas>
+                                <div id="windDirectionChart"></div>
                             </div>
                         </div>
                     </div>
@@ -262,12 +256,11 @@
             </div>            <div class="row g-4 mb-4">
                 <div class="col-md-6">
                     <div class="card h-100 shadow-sm">
-                        <div class="card-header bg-success text-white">
+                        <div class="card-header bg-light text-dark">
                             <h5 class="card-title mb-0">Temperatura do Mar</h5>
-                        </div>
-                        <div class="card-body">
+                        </div>                        <div class="card-body">
                             <div class="chart-container dashboard-chart">
-                                <canvas id="temperatureChart"></canvas>
+                                <div id="temperatureChart"></div>
                             </div>
                         </div>
                     </div>
@@ -276,10 +269,9 @@
                     <div class="card h-100 shadow-sm">
                         <div class="card-header bg-warning text-dark">
                             <h5 class="card-title mb-0">Velocidade do Vento</h5>
-                        </div>
-                        <div class="card-body">
+                        </div>                        <div class="card-body">
                             <div class="chart-container dashboard-chart">
-                                <canvas id="windSpeedChart"></canvas>
+                                <div id="windSpeedChart"></div>
                             </div>
                         </div>
                     </div>
@@ -289,7 +281,7 @@
           <!-- Raw Data Tab -->
         <div class="tab-pane fade" id="rawdata" role="tabpanel" aria-labelledby="rawdata-tab">
             <div class="card shadow-sm">
-                <div class="card-header bg-gradient-secondary text-white">
+                <div class="card-header bg-light text-dark">
                     <div class="d-flex justify-content-between align-items-center">
                         <h5 class="card-title mb-0">
                             <i class="bi bi-table me-2"></i>
@@ -307,33 +299,9 @@
                         </div>
                     </div>
                 </div>
-                <div class="card-body p-0">
-                    <!-- Data Statistics Summary -->
+                <div class="card-body p-0">                    <!-- Data Statistics Summary -->
                     <div class="row g-0 border-bottom">
-                        <div class="col-md-3 p-3 border-end">
-                            <div class="stat-item text-center">
-                                <div class="stat-value text-primary h4">@Model.Summary.AverageWaveHeight.ToString("F1")m</div>
-                                <div class="stat-label text-muted small">Altura Média das Ondas</div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 p-3 border-end">
-                            <div class="stat-item text-center">
-                                <div class="stat-value text-success h4">@Model.Summary.AverageSeaTemperature.ToString("F1")°C</div>
-                                <div class="stat-label text-muted small">Temperatura Média</div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 p-3 border-end">
-                            <div class="stat-item text-center">
-                                <div class="stat-value text-info h4">@Model.Summary.AverageWindSpeed.ToString("F1") nós</div>
-                                <div class="stat-label text-muted small">Vento Médio</div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 p-3">
-                            <div class="stat-item text-center">
-                                <div class="stat-value text-warning h4">@Model.Summary.MostCommonWindDirection</div>
-                                <div class="stat-label text-muted small">Direção Predominante</div>
-                            </div>
-                        </div>
+                        <!-- Metrics removed as requested -->
                     </div>
 
                     <!-- Table Controls -->
@@ -347,17 +315,10 @@
                                     <input type="text" class="form-control" id="tableSearch" placeholder="Pesquisar dados...">
                                 </div>
                             </div>
-                            <div class="col-md-6 text-end">
-                                <div class="btn-group btn-group-sm">
+                            <div class="col-md-6 text-end">                                <div class="btn-group btn-group-sm">
                                     <button type="button" class="btn btn-outline-primary" onclick="refreshTableData()">
                                         <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
                                     </button>
-                                    <a href="@Url.Action("ExportData", "Export", new { format = "csv" })" class="btn btn-outline-secondary">
-                                        <i class="bi bi-filetype-csv me-1"></i>CSV
-                                    </a>
-                                    <a href="@Url.Action("ExportData", "Export", new { format = "json" })" class="btn btn-outline-secondary">
-                                        <i class="bi bi-filetype-json me-1"></i>JSON
-                                    </a>
                                 </div>
                             </div>
                         </div>
@@ -453,10 +414,9 @@
                         <div class="row align-items-center">
                             <div class="col-md-6">
                                 <small class="text-muted">
-                                    Exibindo @Math.Min(200, Model.OceanData.Count) de @Model.OceanData.Count registos
-                                    @if (Model.OceanData.Count > 200)
+                                    Exibindo @Math.Min(200, Model.OceanData.Count) de @Model.OceanData.Count registos                                    @if (Model.OceanData.Count > 200)
                                     {
-                                        <span class="text-info">• Use os filtros ou exporte para ver todos os dados</span>
+                                        <span class="text-info">• Use os filtros para ver todos os dados</span>
                                     }
                                 </small>
                             </div>
@@ -475,8 +435,21 @@
 </div>
 
 @section Scripts {
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script>
+        // Inicialização do Dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🌊 Inicializando Ocean Dashboard...');
+
+            // Carregar dados quando a página estiver pronta
+            setTimeout(() => {
+                if (typeof window.loadDashboardData === 'function') {
+                    window.loadDashboardData();
+                } else {
+                    console.error('❌ Funções do dashboard não encontradas');
+                }
+            }, 500);
+        });
+    </script>
     <style>
         /* Enhanced Dashboard Styles */
         .dashboard-chart {
@@ -485,12 +458,12 @@
             max-height: 400px;
             width: 100%;
             position: relative;
+            border-radius: 0.5rem;
         }
         
-        .dashboard-chart canvas {
+        .dashboard-chart > div {
             width: 100% !important;
             height: 100% !important;
-            border-radius: 0.5rem;
         }
         
         /* Advanced Pattern Styles */
@@ -677,8 +650,7 @@
             color: white;
             transform: translateY(-1px);
         }
-        
-        .pagination .page-item.active .page-link {
+          .pagination .page-item.active .page-link {
             background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
             border-color: #3b82f6;
         }
