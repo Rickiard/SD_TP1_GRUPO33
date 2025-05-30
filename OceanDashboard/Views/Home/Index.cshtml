@@ -44,8 +44,7 @@
                     </div>
                     <div class="card-body p-4">
                         <form id="dashboardFilters" method="get" asp-controller="Home" asp-action="Index" class="filters-form">
-                            <div class="row g-4 align-items-end">
-                                <div class="col-lg-3 col-md-6">
+                            <div class="row g-4 align-items-end">                                <div class="col-lg-4 col-md-6">
                                     <div class="form-group">
                                         <label for="timeRange" class="form-label fw-semibold text-primary">
                                             <i class="bi bi-clock me-2"></i>Período de Tempo
@@ -59,7 +58,7 @@
                                         </select>
                                     </div>
                                 </div>
-                                <div class="col-lg-3 col-md-6">
+                                <div class="col-lg-4 col-md-6">
                                     <div class="form-group">
                                         <label for="stationId" class="form-label fw-semibold text-primary">
                                             <i class="bi bi-geo-alt me-2"></i>Estação
@@ -72,34 +71,7 @@
                                             }
                                         </select>
                                     </div>
-                                </div>
-                                <div class="col-lg-2 col-md-6">
-                                    <div class="form-group">
-                                        <label for="resolution" class="form-label fw-semibold text-primary">
-                                            <i class="bi bi-graph-up me-2"></i>Resolução
-                                        </label>
-                                        <select id="resolution" name="resolution" class="form-select modern-select" asp-for="Resolution">
-                                            <option value="raw">Brutos</option>
-                                            <option value="minute">Minuto</option>
-                                            <option value="hour">Hora</option>
-                                            <option value="day">Dia</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="col-lg-2 col-md-6">
-                                    <div class="form-group">
-                                        <label for="analysisType" class="form-label fw-semibold text-primary">
-                                            <i class="bi bi-cpu me-2"></i>Análise
-                                        </label>
-                                        <select id="analysisType" name="analysisType" class="form-select modern-select" asp-for="AnalysisType">
-                                            <option value="none">Sem análise</option>
-                                            <option value="all">Completa</option>
-                                            <option value="wave">Ondas</option>
-                                            <option value="wind">Ventos</option>
-                                            <option value="temperature">Temperatura</option>
-                                        </select>
-                                    </div>
-                                </div>                                <div class="col-lg-2 col-md-12">
+                                </div><div class="col-lg-4 col-md-12">
                                     <div class="form-group">
                                         <div class="d-grid gap-2">
                                             <button type="button" id="applyFilters" class="btn btn-primary btn-modern">
@@ -328,26 +300,6 @@
                 <div class="card-body p-0">                    <!-- Data Statistics Summary -->
                     <div class="row g-0 border-bottom">
                         <!-- Metrics removed as requested -->
-                    </div>
-
-                    <!-- Table Controls -->
-                    <div class="table-controls p-3 bg-light border-bottom">
-                        <div class="row align-items-center">
-                            <div class="col-md-6">
-                                <div class="input-group input-group-sm">
-                                    <span class="input-group-text">
-                                        <i class="bi bi-search"></i>
-                                    </span>
-                                    <input type="text" class="form-control" id="tableSearch" placeholder="Pesquisar dados...">
-                                </div>
-                            </div>
-                            <div class="col-md-6 text-end">                                <div class="btn-group btn-group-sm">
-                                    <button type="button" class="btn btn-outline-primary" onclick="refreshTableData()">
-                                        <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
                     <!-- Data Table -->

@@ -86,8 +86,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Set up event listeners for all filter controls
 function setupFilterListeners() {
-    // Array de IDs dos filtros
-    const filterIds = ['timeRange', 'stationId', 'resolution', 'analysisType'];
+    // Array de IDs apenas dos filtros que ainda existem
+    const filterIds = ['timeRange', 'stationId'];
     
     // Adicionar event listener para cada filtro
     filterIds.forEach(id => {
@@ -223,16 +223,14 @@ function createChart(chartId) {
 function loadAndDisplayData() {
     console.log('Loading dashboard data with filters...');
     
-    // Obter valores de todos os filtros
+    // Obter valores apenas dos filtros que ainda existem
     const timeRange = document.getElementById('timeRange')?.value || '24h';
     const stationId = document.getElementById('stationId')?.value || 'all';
-    const resolution = document.getElementById('resolution')?.value || 'raw';
-    const analysisType = document.getElementById('analysisType')?.value || 'none';
     
-    console.log(`Filters: timeRange=${timeRange}, stationId=${stationId}, resolution=${resolution}, analysisType=${analysisType}`);
+    console.log(`Filters: timeRange=${timeRange}, stationId=${stationId}`);
     
-    // Construir URL com todos os parâmetros dos filtros
-    const url = `/Home/GetLatestData?timeRange=${encodeURIComponent(timeRange)}&location=${encodeURIComponent(stationId)}&resolution=${encodeURIComponent(resolution)}&analysisType=${encodeURIComponent(analysisType)}`;
+    // Construir URL apenas com os parâmetros dos filtros restantes
+    const url = `/Home/GetLatestData?timeRange=${encodeURIComponent(timeRange)}&location=${encodeURIComponent(stationId)}`;
     
     // Mostrar indicador de carregamento
     document.querySelectorAll('.dashboard-chart').forEach(chart => {
@@ -240,7 +238,7 @@ function loadAndDisplayData() {
     });
     
     // Atualizar badge de status com os filtros selecionados
-    updateFilterStatus(timeRange, stationId, resolution, analysisType);
+    updateFilterStatus(timeRange, stationId);
     
     // Atualizar o timestamp de última atualização para "Atualizando..."
     const lastUpdateElement = document.getElementById('lastUpdateTime');
@@ -392,7 +390,7 @@ function updateLastRefreshTime() {
 }
 
 // Atualiza o status dos filtros em uso
-function updateFilterStatus(timeRange, stationId, resolution, analysisType) {
+function updateFilterStatus(timeRange, stationId) {
     const statusElement = document.querySelector('.filter-status');
     if (!statusElement) return;
     
@@ -405,28 +403,11 @@ function updateFilterStatus(timeRange, stationId, resolution, analysisType) {
         '30d': 'Últimos 30 dias'
     };
     
-    const resolutionMap = {
-        'raw': 'Brutos',
-        'minute': 'Minuto',
-        'hour': 'Hora',
-        'day': 'Dia'
-    };
-    
-    const analysisMap = {
-        'none': 'Sem análise',
-        'all': 'Análise completa',
-        'wave': 'Análise de ondas',
-        'wind': 'Análise de ventos',
-        'temperature': 'Análise de temperatura'
-    };
-    
     // Criar strings para os filtros ativos
     const timeFilter = timeRangeMap[timeRange] || timeRange;
     const stationFilter = stationId !== 'all' ? `Estação: ${stationId}` : 'Todas estações';
-    const resolutionFilter = resolutionMap[resolution] || resolution;
-    const analysisFilter = analysisMap[analysisType] || 'Sem análise';
     
-    // Atualizar o badge
+    // Atualizar o badge apenas com os filtros restantes
     statusElement.innerHTML = `
         <span class="badge bg-light text-dark me-1">
             <i class="bi bi-clock-history me-1"></i>${timeFilter}
@@ -434,14 +415,6 @@ function updateFilterStatus(timeRange, stationId, resolution, analysisType) {
         <span class="badge bg-light text-dark me-1">
             <i class="bi bi-geo-alt me-1"></i>${stationFilter}
         </span>
-        <span class="badge bg-light text-dark me-1">
-            <i class="bi bi-bar-chart me-1"></i>${resolutionFilter}
-        </span>
-        ${analysisType !== 'none' ? `
-        <span class="badge bg-info text-white">
-            <i class="bi bi-cpu me-1"></i>${analysisFilter}
-        </span>
-        ` : ''}
     `;
 }
 

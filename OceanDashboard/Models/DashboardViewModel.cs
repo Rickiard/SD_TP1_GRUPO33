@@ -5,14 +5,11 @@ using System.Linq;
 namespace OceanDashboard.Models
 {
     public class DashboardViewModel
-    {
-        // Filter parameters
+    {        // Filter parameters
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
         public string StationId { get; set; } = "all";
-        public string AnalysisType { get; set; } = "all";
         public string TimeRange { get; set; } = "24h";
-        public string Resolution { get; set; } = "hour";
         
         // Data
         public List<OceanData> OceanData { get; set; } = new List<OceanData>();

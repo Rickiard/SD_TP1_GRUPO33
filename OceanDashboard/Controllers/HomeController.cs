@@ -190,74 +190,49 @@ namespace OceanDashboard.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erro ao inicializar banco de dados");
-            }
-        }
+            }        }
 
-        public async Task<IActionResult> Index(string timeRange = "24h", string stationId = "all", string resolution = "hour", string analysisType = "all")
+        public IActionResult Index(string timeRange = "24h", string stationId = "all")
         {
-            // Create and populate dashboard view model
-            var viewModel = new DashboardViewModel
+            _logger.LogInformation("Index action called with timeRange: {timeRange}, stationId: {stationId}",
+                timeRange, stationId);
+
+            try
             {
-                TimeRange = timeRange,
-                StationId = stationId,
-                Resolution = resolution,
-                AnalysisType = analysisType
-            };
-            
-            // Get ocean data based on filters
-            viewModel.OceanData = GetLatestOceanData(timeRange, stationId, resolution);
-            
-            // If we don't have any data, try to create sample data
-            if (viewModel.OceanData.Count == 0)
-            {
-                var endDate = DateTime.Now;
-                var startDate = endDate.AddHours(-24);
-                _logger.LogInformation("No data found for default view, inserting sample data");
-                InsertDefaultData(startDate, endDate);
-                viewModel.OceanData = GetLatestOceanData(timeRange, stationId, resolution);
-            }
-            
-            // Get available stations for filter dropdown
-            viewModel.AvailableStations = GetAvailableStations();
-            
-            // Calculate summary statistics
-            viewModel.CalculateSummary();
-            
-            // Get pattern analysis if requested
-            if (analysisType != "none")
-            {
-                try
+                // Create and populate dashboard view model
+                var viewModel = new DashboardViewModel
                 {
-                    var dataAnalysisClient = HttpContext.RequestServices.GetRequiredService<Services.DataAnalysisServiceClient>();
-                    string fieldName = "wave_height";
-                    
-                    switch (analysisType)
-                    {
-                        case "wave":
-                            fieldName = "wave_height_m";
-                            break;
-                        case "wind":
-                            fieldName = "wind_speed_kn";
-                            break;
-                        case "temperature":
-                            fieldName = "sea_temperature_c";
-                            break;
-                    }
-                    
-                    viewModel.PatternAnalysisResult = await dataAnalysisClient.DetectPatternsAsync(
-                        viewModel.OceanData,
-                        "all",
-                        fieldName,
-                        24
-                    );
-                }
-                catch (Exception ex)
+                    TimeRange = timeRange,
+                    StationId = stationId
+                };
+                
+                // Get ocean data based on filters (always use raw resolution now)
+                viewModel.OceanData = GetLatestOceanData(timeRange, stationId);
+                
+                // If we don't have any data, try to create sample data
+                if (viewModel.OceanData.Count == 0)
                 {
-                    _logger.LogError(ex, "Error connecting to Data Analysis Service");
+                    var endDate = DateTime.Now;
+                    var startDate = endDate.AddHours(-24);
+                    _logger.LogInformation("No data found for default view, inserting sample data");
+                    InsertDefaultData(startDate, endDate);
+                    viewModel.OceanData = GetLatestOceanData(timeRange, stationId);
                 }
+                
+                // Get available stations for filter dropdown
+                viewModel.AvailableStations = GetAvailableStations();
+                
+                // Calculate summary statistics
+                viewModel.CalculateSummary();
+                
+                return View(viewModel);
             }
-            
-            return View(viewModel);        }        [HttpGet]
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in Index action");
+                return View(new DashboardViewModel());
+            }
+        }[HttpGet]
         public IActionResult TestData()
         {
             var testData = new List<object>
@@ -281,19 +256,16 @@ namespace OceanDashboard.Controllers
             };
             
             return Json(testData);
-        }
-
-        [HttpGet]
+        }        [HttpGet]
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-        public IActionResult GetLatestData(string timeRange = "24h", string location = "all", string resolution = "raw", string analysisType = "none")
+        public IActionResult GetLatestData(string timeRange = "24h", string location = "all")
         {
             _logger.LogInformation("=== INÍCIO GetLatestData ===");
-            _logger.LogInformation("Parâmetros: timeRange={TimeRange}, location={Location}, resolution={Resolution}, analysisType={AnalysisType}", 
-                timeRange, location, resolution, analysisType);
+            _logger.LogInformation("Parâmetros: timeRange={TimeRange}, location={Location}", 
+                timeRange, location);
             
             // Validar parâmetros recebidos
             timeRange = ValidateTimeRange(timeRange);
-            resolution = ValidateResolution(resolution);
             
             // Adicionar logs detalhados sobre detecção de formato de banco
             _logger.LogInformation("Caminho do banco de dados: {DbPath}", _dbPath);
@@ -310,52 +282,22 @@ namespace OceanDashboard.Controllers
             {
                 _logger.LogInformation("USANDO FORMATO PADRÃO - tabela ocean_data");
             }
-            
-            // Obter dados filtrados
-            var oceanData = GetLatestOceanData(timeRange, location, resolution);
-            
-            // Aplicar análises adicionais se necessário
-            if (analysisType != "none" && oceanData.Count > 0)
-            {
-                try
-                {
-                    _logger.LogInformation("Aplicando análise: {AnalysisType}", analysisType);
-                    ApplyDataAnalysis(oceanData, analysisType);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Erro ao aplicar análise de dados");
-                }
-            }
+              // Obter dados filtrados - sempre usar resolução raw agora
+            var oceanData = GetLatestOceanData(timeRange, location);
             
             _logger.LogInformation("GetLatestOceanData retornou {Count} registros", oceanData?.Count ?? 0);
             _logger.LogInformation("=== FIM GetLatestData ===");
             
             return Json(oceanData);
         }
-        
-        // Métodos auxiliares para validação de parâmetros
+          // Método auxiliar para validação de parâmetros
         private string ValidateTimeRange(string timeRange)
         {
             var validRanges = new[] { "1h", "6h", "24h", "7d", "30d" };
             return validRanges.Contains(timeRange) ? timeRange : "24h";
         }
-        
-        private string ValidateResolution(string resolution)
-        {
-            var validResolutions = new[] { "raw", "minute", "hour", "day" };
-            return validResolutions.Contains(resolution) ? resolution : "raw";
-        }
-        
-        // Método para aplicar análises aos dados
-        private void ApplyDataAnalysis(List<OceanData> data, string analysisType)
-        {
-            // Aqui poderia ser implementada lógica para aplicar análises específicas
-            // Por enquanto, apenas logamos que a análise seria aplicada
-            _logger.LogInformation("Análise de dados tipo {AnalysisType} aplicada a {Count} registros", analysisType, data.Count);
-        }
 
-        public List<OceanData> GetLatestOceanData(string timeRange = "24h", string location = "all", string resolution = "hour")
+        public List<OceanData> GetLatestOceanData(string timeRange = "24h", string location = "all")
         {
             // Determinar o intervalo de tempo para a consulta
             DateTime startDate;
@@ -404,112 +346,10 @@ namespace OceanDashboard.Controllers
                 
                 _logger.LogInformation("Successfully inserted and retrieved default data for display");
             }
-            
-            // Aplicar resolução dos dados (agrupamento)
-            data = ApplyDataResolution(data, resolution);
+              // Data resolution filtering has been removed for simplification
 
             return data;
-        }
-        
-        private List<OceanData> ApplyDataResolution(List<OceanData> rawData, string resolution)
-        {
-            // Se for dados brutos ou não tiver dados suficientes, retornar os dados originais
-            if (resolution == "raw" || rawData == null || rawData.Count <= 1)
-            {
-                _logger.LogInformation($"Resolução 'raw' ou dados insuficientes: {rawData?.Count ?? 0} registos devolvidos.");
-                return rawData ?? new List<OceanData>();
-            }
-
-            var processedData = new List<OceanData>();
-            var groupedData = new Dictionary<(DateTime, string), List<OceanData>>();
-
-            // Determinar o formato de agrupamento com base na resolução
-            Func<DateTime, DateTime> getGroupKey;
-
-            switch (resolution)
-            {
-                case "minute":
-                    getGroupKey = (dt) => new DateTime(dt.Year, dt.Month, dt.Day, dt.Hour, dt.Minute, 0);
-                    break;
-                case "hour":
-                    getGroupKey = (dt) => new DateTime(dt.Year, dt.Month, dt.Day, dt.Hour, 0, 0);
-                    break;
-                case "day":
-                    getGroupKey = (dt) => new DateTime(dt.Year, dt.Month, dt.Day);
-                    break;
-                default:
-                    _logger.LogWarning($"Resolução desconhecida '{resolution}', a devolver dados originais.");
-                    return rawData;
-            }            // Agrupar dados por timestamp e estação
-            foreach (var item in rawData)
-            {
-                var key = (getGroupKey(item.Timestamp), item.StationId);
-                if (!groupedData.ContainsKey(key))
-                {
-                    groupedData[key] = new List<OceanData>();
-                }
-                groupedData[key].Add(item);
-            }
-
-            _logger.LogInformation($"Agrupamento para resolução '{resolution}': {groupedData.Count} grupos encontrados.");
-
-            // Calcular médias para cada grupo
-            foreach (var group in groupedData.OrderByDescending(g => g.Key))
-            {                var groupData = group.Value;
-                if (groupData.Any())
-                {
-                    // Criar um novo OceanData com valores agregados
-                    var aggregatedData = new OceanData
-                    {
-                        Timestamp = group.Key.Item1,
-                        Id = groupData[0].Id, // Usar o ID do primeiro registro
-                        
-                        // Usar médias para os valores numéricos
-                        WaveHeight = groupData.Average(d => d.WaveHeight),
-                        WavePeriod = groupData.Average(d => d.WavePeriod),
-                        WaveDirection = groupData.Average(d => d.WaveDirection),
-                        
-                        // Adicionar todos os campos do formato SensorData
-                        AtmospherePressure = groupData.Average(d => d.AtmospherePressure),
-                        WindDirection = groupData.Average(d => d.WindDirection),
-                        WindSpeed = groupData.Average(d => d.WindSpeed),
-                        Gust = groupData.Average(d => d.Gust),
-                        MaxWaveHeight = groupData.Average(d => d.MaxWaveHeight),
-                        AirTemperature = groupData.Average(d => d.AirTemperature),
-                        DewPoint = groupData.Average(d => d.DewPoint), 
-                        SeaTemperature = groupData.Average(d => d.SeaTemperature),
-                        RelativeHumidity = groupData.Average(d => d.RelativeHumidity),
-                        
-                        // Para campos não numéricos, usar o valor mais frequente ou o primeiro
-                        SensorId = groupData.GroupBy(d => d.SensorId)
-                            .OrderByDescending(g => g.Count())
-                            .Select(g => g.Key)
-                            .FirstOrDefault() ?? "",
-                            
-                        StationId = groupData.GroupBy(d => d.StationId)
-                            .OrderByDescending(g => g.Count())
-                            .Select(g => g.Key)
-                            .FirstOrDefault() ?? "",
-                            
-                        // Para coordenadas, usar a média
-                        Longitude = groupData.Average(d => d.Longitude),
-                        Latitude = groupData.Average(d => d.Latitude),
-                        
-                        // Para a flag de qualidade, usar o modo (valor mais frequente)
-                        QcFlag = groupData.GroupBy(d => d.QcFlag)
-                            .OrderByDescending(g => g.Count())
-                            .Select(g => g.Key)
-                            .FirstOrDefault()
-                    };
-                    
-                    // Add to processed data list
-                    processedData.Add(aggregatedData);
-                }
-            }
-
-            _logger.LogInformation($"Resolução '{resolution}': {processedData.Count} pontos devolvidos após agrupamento.");
-            return processedData;
-        }        // Helper method to get data from database with specific date range and location
+        }// Helper method to get data from database with specific date range and location
         private List<OceanData> GetDataFromDatabase(DateTime startDate, DateTime endDate, string location)
         {
             var data = new List<OceanData>();
