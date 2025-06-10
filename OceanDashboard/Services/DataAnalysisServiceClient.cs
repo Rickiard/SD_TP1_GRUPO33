@@ -153,9 +153,8 @@ namespace OceanDashboard.Services
                 var channelOptions = new GrpcChannelOptions { HttpClient = _httpClient };
                 using var channel = GrpcChannel.ForAddress(_rpcServiceUrl, channelOptions);
                 var client = new RPC_DataAnalyserService.DataAnalysisService.DataAnalysisServiceClient(channel);
-                
-                // Preparar a requisição
-                var request = new AnalysisRequest
+                  // Preparar a requisição
+                var request = new RPC_DataAnalyserService.AnalysisRequest
                 {
                     AnalysisType = analysisType,
                     TimeRange = timeRange,

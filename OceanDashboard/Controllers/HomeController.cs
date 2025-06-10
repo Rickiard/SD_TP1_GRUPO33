@@ -724,5 +724,291 @@ namespace OceanDashboard.Controllers
             
             return stations;
         }
+
+        [HttpPost]
+        public async Task<IActionResult> AnalyzeDataWithFilters([FromBody] AnalysisRequest request)
+        {
+            try
+            {
+                // Validar parâmetros
+                if (request == null)
+                {
+                    return BadRequest("Request inválido");
+                }
+
+                var data = GetDataFromDatabase(request.StartDate, request.EndDate, request.Location);
+                
+                // Aplicar filtros específicos
+                data = ApplyAdvancedFilters(data, request);
+
+                // Realizar análise específica
+                var analysisResult = await PerformAdvancedAnalysis(data, request);
+
+                return Json(new { 
+                    success = true, 
+                    data = analysisResult,
+                    totalRecords = data.Count,
+                    filters = request
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro na análise de dados com filtros");
+                return Json(new { success = false, error = ex.Message });
+            }
+        }        [HttpGet]
+        public IActionResult GetAnalysisPresets()
+        {
+            var presets = new object[]
+            {
+                new { name = "Tempestades", filters = new { waveHeightMin = 3.0, windSpeedMin = 15.0 } },
+                new { name = "Condições Calmas", filters = new { waveHeightMax = 1.0, windSpeedMax = 8.0 } },
+                new { name = "Águas Quentes", filters = new { seaTemperatureMin = 20.0 } },
+                new { name = "Águas Frias", filters = new { seaTemperatureMax = 15.0 } },
+                new { name = "Ventos Fortes", filters = new { windSpeedMin = 20.0 } },
+                new { name = "Ondas Altas", filters = new { waveHeightMin = 2.5 } }
+            };
+
+            return Json(presets);
+        }
+
+        private List<OceanData> ApplyAdvancedFilters(List<OceanData> data, AnalysisRequest request)
+        {
+            var filtered = data.AsEnumerable();
+
+            // Filtros de ondas
+            if (request.WaveHeightMin.HasValue)
+                filtered = filtered.Where(d => d.WaveHeight >= request.WaveHeightMin.Value);
+            if (request.WaveHeightMax.HasValue)
+                filtered = filtered.Where(d => d.WaveHeight <= request.WaveHeightMax.Value);
+
+            // Filtros de vento
+            if (request.WindSpeedMin.HasValue)
+                filtered = filtered.Where(d => d.WindSpeed >= request.WindSpeedMin.Value);
+            if (request.WindSpeedMax.HasValue)
+                filtered = filtered.Where(d => d.WindSpeed <= request.WindSpeedMax.Value);
+
+            // Filtros de temperatura
+            if (request.SeaTemperatureMin.HasValue)
+                filtered = filtered.Where(d => d.SeaTemperature >= request.SeaTemperatureMin.Value);
+            if (request.SeaTemperatureMax.HasValue)
+                filtered = filtered.Where(d => d.SeaTemperature <= request.SeaTemperatureMax.Value);
+
+            // Filtros de pressão
+            if (request.PressureMin.HasValue)
+                filtered = filtered.Where(d => d.AtmospherePressure >= request.PressureMin.Value);
+            if (request.PressureMax.HasValue)
+                filtered = filtered.Where(d => d.AtmospherePressure <= request.PressureMax.Value);
+
+            // Filtro por estações específicas
+            if (!string.IsNullOrEmpty(request.StationIds))
+            {
+                var stations = request.StationIds.Split(',').Select(s => s.Trim()).ToList();
+                filtered = filtered.Where(d => stations.Contains(d.StationId));
+            }
+
+            return filtered.ToList();
+        }
+
+        private async Task<object> PerformAdvancedAnalysis(List<OceanData> data, AnalysisRequest request)
+        {
+            if (!data.Any())
+            {
+                return new { message = "Nenhum dado encontrado com os filtros aplicados" };
+            }
+
+            var result = new
+            {
+                summary = new
+                {
+                    totalRecords = data.Count,
+                    timeSpan = new
+                    {
+                        start = data.Min(d => d.Timestamp),
+                        end = data.Max(d => d.Timestamp)
+                    },
+                    stations = data.Select(d => d.StationId).Distinct().ToList()
+                },
+                statistics = new
+                {
+                    waves = new
+                    {
+                        avgHeight = data.Average(d => d.WaveHeight),
+                        maxHeight = data.Max(d => d.WaveHeight),
+                        minHeight = data.Min(d => d.WaveHeight),
+                        avgPeriod = data.Average(d => d.WavePeriod),
+                        significantWaveHeight = CalculateSignificantWaveHeight(data)
+                    },
+                    wind = new
+                    {
+                        avgSpeed = data.Average(d => d.WindSpeed),
+                        maxSpeed = data.Max(d => d.WindSpeed),
+                        avgGust = data.Average(d => d.Gust),
+                        predominantDirection = GetPredominantWindDirection(data)
+                    },
+                    temperature = new
+                    {
+                        avgSea = data.Average(d => d.SeaTemperature),
+                        maxSea = data.Max(d => d.SeaTemperature),
+                        minSea = data.Min(d => d.SeaTemperature),
+                        avgAir = data.Average(d => d.AirTemperature)
+                    },
+                    pressure = new
+                    {
+                        avg = data.Average(d => d.AtmospherePressure),
+                        max = data.Max(d => d.AtmospherePressure),
+                        min = data.Min(d => d.AtmospherePressure)
+                    }
+                },
+                trends = await AnalyzeTrends(data),
+                patterns = await DetectPatterns(data),
+                extremeEvents = DetectExtremeEvents(data)
+            };
+
+            return result;
+        }
+
+        private double CalculateSignificantWaveHeight(List<OceanData> data)
+        {
+            // H1/3 - média do terço superior das alturas de onda
+            var heights = data.Select(d => d.WaveHeight).OrderByDescending(h => h).ToList();
+            var topThird = heights.Take(heights.Count / 3);
+            return topThird.Any() ? topThird.Average() : 0;
+        }
+
+        private string GetPredominantWindDirection(List<OceanData> data)
+        {
+            var directions = data.Select(d => d.WindDirection).ToList();
+            var grouped = directions.GroupBy(d => Math.Round(d / 45) * 45)
+                                   .OrderByDescending(g => g.Count())
+                                   .FirstOrDefault();
+            
+            if (grouped != null)
+            {
+                return DegreesToCardinal(grouped.Key);
+            }
+            return "N/A";
+        }
+
+        private string DegreesToCardinal(double degrees)
+        {
+            string[] cardinals = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+            int index = (int)Math.Round(degrees / 45) % 8;
+            return cardinals[index];
+        }        private Task<object> AnalyzeTrends(List<OceanData> data)
+        {
+            return Task.Run(() =>
+            {
+                // Análise de tendências simples
+                var sortedData = data.OrderBy(d => d.Timestamp).ToList();
+                
+                if (sortedData.Count < 2) return (object)new { message = "Dados insuficientes para análise de tendências" };
+
+                var first = sortedData.Take(sortedData.Count / 3).ToList();
+                var last = sortedData.TakeLast(sortedData.Count / 3).ToList();
+
+                return (object)new
+                {
+                    waveHeight = new
+                    {
+                        trend = last.Average(d => d.WaveHeight) > first.Average(d => d.WaveHeight) ? "increasing" : "decreasing",
+                        change = last.Average(d => d.WaveHeight) - first.Average(d => d.WaveHeight)
+                    },
+                    temperature = new
+                    {
+                        trend = last.Average(d => d.SeaTemperature) > first.Average(d => d.SeaTemperature) ? "increasing" : "decreasing",
+                        change = last.Average(d => d.SeaTemperature) - first.Average(d => d.SeaTemperature)
+                    },
+                    windSpeed = new
+                    {
+                        trend = last.Average(d => d.WindSpeed) > first.Average(d => d.WindSpeed) ? "increasing" : "decreasing",
+                        change = last.Average(d => d.WindSpeed) - first.Average(d => d.WindSpeed)
+                    }
+                };
+            });
+        }        private Task<object> DetectPatterns(List<OceanData> data)
+        {
+            return Task.Run(() =>
+            {
+                var patterns = new List<object>();
+
+                // Detectar padrões de tempestade
+                var stormData = data.Where(d => d.WaveHeight > 3.0 && d.WindSpeed > 15.0).ToList();
+                if (stormData.Any())
+                {
+                    patterns.Add(new
+                    {
+                        type = "storm",
+                        count = stormData.Count,
+                        percentage = (double)stormData.Count / data.Count * 100,
+                        avgIntensity = new
+                        {
+                            waveHeight = stormData.Average(d => d.WaveHeight),
+                            windSpeed = stormData.Average(d => d.WindSpeed)
+                        }
+                    });
+                }
+
+                // Detectar condições calmas
+                var calmData = data.Where(d => d.WaveHeight < 1.0 && d.WindSpeed < 8.0).ToList();
+                if (calmData.Any())
+                {
+                    patterns.Add(new
+                    {
+                        type = "calm",
+                        count = calmData.Count,
+                        percentage = (double)calmData.Count / data.Count * 100
+                    });
+                }
+
+                return (object)patterns;
+            });
+        }
+
+        private List<object> DetectExtremeEvents(List<OceanData> data)
+        {
+            var events = new List<object>();
+
+            // Detectar ondas extremas (> 95º percentil)
+            var waveHeights = data.Select(d => d.WaveHeight).OrderBy(h => h).ToList();
+            var wave95th = waveHeights[(int)(waveHeights.Count * 0.95)];
+            
+            var extremeWaves = data.Where(d => d.WaveHeight >= wave95th).ToList();
+            foreach (var wave in extremeWaves)
+            {
+                events.Add(new
+                {
+                    type = "extreme_wave",
+                    timestamp = wave.Timestamp,
+                    value = wave.WaveHeight,
+                    station = wave.StationId,
+                    severity = wave.WaveHeight > wave95th * 1.2 ? "critical" : "high"
+                });
+            }
+
+            // Detectar ventos extremos
+            var windSpeeds = data.Select(d => d.WindSpeed).OrderBy(w => w).ToList();
+            var wind95th = windSpeeds[(int)(windSpeeds.Count * 0.95)];
+            
+            var extremeWinds = data.Where(d => d.WindSpeed >= wind95th).ToList();
+            foreach (var wind in extremeWinds)
+            {
+                events.Add(new
+                {
+                    type = "extreme_wind",
+                    timestamp = wind.Timestamp,
+                    value = wind.WindSpeed,
+                    station = wind.StationId,
+                    severity = wind.WindSpeed > wind95th * 1.2 ? "critical" : "high"
+                });
+            }
+
+            return events.OrderByDescending(e => ((DateTime)((dynamic)e).timestamp)).Take(10).ToList();
+        }
+
+        public IActionResult Analysis()
+        {
+            return View();
+        }
     }
 }
